@@ -29,14 +29,15 @@ func (e EpisodeItem) Description() string {
 
 // EpisodesModel handles episode browsing for a season.
 type EpisodesModel struct {
-	list      *components.VirtualList
-	search    textinput.Model
-	searching bool
-	season    xc.SeasonInfo
-	episodes  []xc.Episode
-	width     int
-	height    int
-	client    *xc.Client
+	list       *components.VirtualList
+	search     textinput.Model
+	searching  bool
+	seriesName string // For download subfolder
+	season     xc.SeasonInfo
+	episodes   []xc.Episode
+	width      int
+	height     int
+	client     *xc.Client
 }
 
 // NewEpisodesModel creates a new episodes screen.
@@ -54,6 +55,11 @@ func NewEpisodesModel() *EpisodesModel {
 // SetClient sets the XC API client.
 func (m *EpisodesModel) SetClient(client *xc.Client) {
 	m.client = client
+}
+
+// SetSeriesName sets the series name for download subfolders.
+func (m *EpisodesModel) SetSeriesName(name string) {
+	m.seriesName = name
 }
 
 // SetSeason sets the season and its episodes.
@@ -158,7 +164,12 @@ func (m *EpisodesModel) downloadEpisode() tea.Cmd {
 	name := ep.Title + "." + container
 
 	return func() tea.Msg {
-		return tui.DownloadRequestMsg{Name: name, URL: url}
+		return tui.DownloadRequestMsg{
+			Name:       name,
+			URL:        url,
+			SeriesName: m.seriesName,
+			SeasonName: m.season.Name,
+		}
 	}
 }
 

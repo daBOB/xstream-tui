@@ -10,6 +10,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/charmbracelet/bubbles/progress"
+
 	"github.com/altmueller/xstream-tui/internal/download"
 	"github.com/altmueller/xstream-tui/internal/player"
 	"github.com/altmueller/xstream-tui/internal/tui/components"
@@ -26,12 +28,13 @@ type App struct {
 
 	// Screen models - using interface{} to avoid circular imports
 	// Screens are set via dependency injection from main
-	login       interface{}
-	contentType interface{}
-	categories  interface{}
-	streams     interface{}
-	seasons     interface{}
-	episodes    interface{}
+	login         interface{}
+	contentType   interface{}
+	categories    interface{}
+	streams       interface{}
+	seasons       interface{}
+	episodes      interface{}
+	seriesBrowser interface{}
 
 	// Current series for episodes screen
 	currentSeries         xc.Series
@@ -53,9 +56,13 @@ type App struct {
 	playerStop context.CancelFunc
 
 	// Downloader
-	downloader    *download.Manager
-	downloadQueue *components.DownloadQueue
-	program       *tea.Program // needed for progress callbacks
+	downloader     *download.Manager
+	downloadDaemon *download.Daemon
+	downloadQueue  *components.DownloadQueue
+	program        *tea.Program // needed for progress callbacks
+
+	// Use split view for series browser
+	useSplitView bool
 }
 
 // Screen model interfaces for type assertions.
@@ -100,7 +107,16 @@ type seasonsScreen interface {
 
 type episodesScreen interface {
 	SetClient(client *xc.Client)
+	SetSeriesName(name string)
 	SetSeason(season xc.SeasonInfo, episodes []xc.Episode)
+	SetSize(width, height int)
+	Update(tea.Msg) tea.Cmd
+	View() string
+}
+
+type seriesBrowserScreen interface {
+	SetClient(client *xc.Client)
+	SetSeries(series xc.Series) tea.Cmd
 	SetSize(width, height int)
 	Update(tea.Msg) tea.Cmd
 	View() string
@@ -112,25 +128,14 @@ func NewApp() *App {
 		screen:        LoginScreen,
 		player:        player.NewManager(),
 		downloadQueue: components.NewDownloadQueue(),
+		useSplitView:  true, // Enable split view for series browser by default
 	}
 }
 
 // SetDownloader sets the download manager.
 func (a *App) SetDownloader(dm *download.Manager) {
 	a.downloader = dm
-	// Set progress callback to send messages to TUI
-	dm.SetProgressCallback(func(update download.ProgressUpdate) {
-		if a.program != nil {
-			a.program.Send(DownloadProgressMsg{
-				ID:         update.ID,
-				Progress:   update.Progress,
-				Downloaded: update.Downloaded,
-				Size:       update.Size,
-				Status:     update.Status.String(),
-				Error:      update.Error,
-			})
-		}
-	})
+	a.downloadDaemon = download.NewDaemon(dm)
 }
 
 // SetProgram sets the tea.Program for sending messages.
@@ -168,16 +173,51 @@ func (a *App) SetEpisodesScreen(m interface{}) {
 	a.episodes = m
 }
 
+// SetSeriesBrowserScreen injects the series browser screen model.
+func (a *App) SetSeriesBrowserScreen(m interface{}) {
+	a.seriesBrowser = m
+}
+
 // Init initializes the application.
 func (a *App) Init() tea.Cmd {
+	var cmds []tea.Cmd
+
 	if s, ok := a.login.(loginScreen); ok {
-		return s.Focus()
+		cmds = append(cmds, s.Focus())
 	}
-	return nil
+
+	// Start download daemon for tick-based progress updates
+	if a.downloadDaemon != nil {
+		cmds = append(cmds, a.downloadDaemon.Start())
+	}
+
+	return tea.Batch(cmds...)
 }
 
 // Update handles messages and updates application state.
 func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
+	// Handle download daemon tick messages
+	if a.downloadDaemon != nil {
+		if statusMsg, cmd := a.downloadDaemon.Update(msg); statusMsg != nil {
+			if status, ok := statusMsg.(download.DaemonStatusMsg); ok {
+				a.downloadQueue.SetItems(status.Items)
+			}
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+
+	// Handle progress bar animation frames
+	if _, ok := msg.(progress.FrameMsg); ok {
+		cmd := a.downloadQueue.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
@@ -285,14 +325,23 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.currentSeries = msg.Series
 		a.loading = true
 		a.loadingMsg = "Loading series info..."
+		// Use split view series browser if available
+		if a.useSplitView && a.seriesBrowser != nil {
+			return a.navigateTo(SeriesBrowserScreen)
+		}
 		return a.navigateTo(SeasonsScreen)
 
 	case SeriesInfoLoadedMsg:
 		a.loading = false
-		if s, ok := a.seasons.(seasonsScreen); ok {
+		// Forward to appropriate screen
+		if a.screen == SeriesBrowserScreen {
+			if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
+				return a, s.Update(msg)
+			}
+		} else if s, ok := a.seasons.(seasonsScreen); ok {
 			return a, s.Update(msg)
 		}
-		return a, nil
+		return a, tea.Batch(cmds...)
 
 	case SeasonSelectedMsg:
 		a.currentSeason = msg.Season
@@ -343,20 +392,30 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case DownloadRequestMsg:
 		if a.downloader != nil {
-			a.downloader.Add(msg.Name, msg.URL)
+			// Build subfolder path for series episodes
+			var subPath string
+			if msg.SeriesName != "" {
+				subPath = msg.SeriesName
+				if msg.SeasonName != "" {
+					subPath = subPath + "/" + msg.SeasonName
+				}
+			}
+			a.downloader.AddWithPath(msg.Name, msg.URL, subPath)
 			a.errorMsg = "Added to download queue - Press 'D' to view"
 		}
 		return a, nil
 
 	case DownloadProgressMsg:
-		if a.downloader != nil {
-			a.downloadQueue.SetItems(a.downloader.Queue())
-		}
-		return a, nil
+		// Progress is now handled by daemon
+		return a, tea.Batch(cmds...)
 	}
 
 	// Forward to current screen
-	return a.updateScreen(msg)
+	model, cmd := a.updateScreen(msg)
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return model, tea.Batch(cmds...)
 }
 
 func (a *App) updateScreenSizes() {
@@ -376,6 +435,9 @@ func (a *App) updateScreenSizes() {
 		s.SetSize(a.width, a.height)
 	}
 	if s, ok := a.episodes.(episodesScreen); ok {
+		s.SetSize(a.width, a.height)
+	}
+	if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
 		s.SetSize(a.width, a.height)
 	}
 }
@@ -406,6 +468,10 @@ func (a *App) updateScreen(msg tea.Msg) (*App, tea.Cmd) {
 		}
 	case EpisodesScreen:
 		if s, ok := a.episodes.(episodesScreen); ok {
+			cmd = s.Update(msg)
+		}
+	case SeriesBrowserScreen:
+		if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
 			cmd = s.Update(msg)
 		}
 	}
@@ -442,7 +508,13 @@ func (a *App) navigateTo(screen Screen) (*App, tea.Cmd) {
 	case EpisodesScreen:
 		if s, ok := a.episodes.(episodesScreen); ok {
 			s.SetClient(a.client)
+			s.SetSeriesName(a.currentSeries.Name)
 			s.SetSeason(a.currentSeason, a.currentSeasonEpisodes)
+		}
+	case SeriesBrowserScreen:
+		if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
+			s.SetClient(a.client)
+			cmd = s.SetSeries(a.currentSeries)
 		}
 	}
 
@@ -578,6 +650,10 @@ func (a *App) renderScreen() string {
 		}
 	case EpisodesScreen:
 		if s, ok := a.episodes.(episodesScreen); ok {
+			return s.View()
+		}
+	case SeriesBrowserScreen:
+		if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
 			return s.View()
 		}
 	}

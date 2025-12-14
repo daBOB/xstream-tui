@@ -22,10 +22,11 @@ type SeriesBrowserModel struct {
 	episodes  *components.FancyList
 	spinner   spinner.Model
 
-	series      xc.Series
-	seriesInfo  *xc.SeriesInfo
-	allEpisodes map[string][]xc.Episode
-	loading     bool
+	series        xc.Series
+	seriesInfo    *xc.SeriesInfo
+	allEpisodes   map[string][]xc.Episode
+	currentSeason string // Current season name for downloads
+	loading       bool
 
 	width  int
 	height int
@@ -200,6 +201,9 @@ func (m *SeriesBrowserModel) updateEpisodesForSelectedSeason() {
 		return
 	}
 
+	// Track current season name for downloads
+	m.currentSeason = seasonItem.Name
+
 	seasonNum := seasonItem.SeasonNumber.String()
 	episodes := m.allEpisodes[seasonNum]
 
@@ -246,7 +250,12 @@ func (m *SeriesBrowserModel) downloadSelectedEpisode() tea.Cmd {
 	name := ep.Title + "." + container
 
 	return func() tea.Msg {
-		return tui.DownloadRequestMsg{Name: name, URL: url}
+		return tui.DownloadRequestMsg{
+			Name:       name,
+			URL:        url,
+			SeriesName: m.series.Name,
+			SeasonName: m.currentSeason,
+		}
 	}
 }
 

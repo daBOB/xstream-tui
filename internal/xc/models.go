@@ -17,12 +17,20 @@ type FlexibleID struct {
 }
 
 // UnmarshalJSON implements json.Unmarshaler for FlexibleID.
-// Handles both numeric (123) and string ("123") JSON values.
+// Handles numeric (123), float (8.1 -> truncated to 8), and string ("123") JSON values.
 func (f *FlexibleID) UnmarshalJSON(data []byte) error {
 	// Try integer first
 	var i int
 	if err := json.Unmarshal(data, &i); err == nil {
 		f.intVal = i
+		f.isInt = true
+		return nil
+	}
+
+	// Try float (truncate to int) - some APIs return floats for IDs
+	var fl float64
+	if err := json.Unmarshal(data, &fl); err == nil {
+		f.intVal = int(fl)
 		f.isInt = true
 		return nil
 	}
@@ -230,11 +238,11 @@ type Episode struct {
 
 // EpisodeInfo contains metadata about an episode.
 type EpisodeInfo struct {
-	Plot       string     `json:"plot"`
-	Duration   string     `json:"duration"`
-	Rating     FlexibleID `json:"rating"`
-	MovieImage string     `json:"movie_image"`
-	Bitrate    FlexibleID `json:"bitrate"`
+	Plot       string        `json:"plot"`
+	Duration   string        `json:"duration"`
+	Rating     FlexibleFloat `json:"rating"`
+	MovieImage string        `json:"movie_image"`
+	Bitrate    FlexibleID    `json:"bitrate"`
 }
 
 // SeriesDetails contains extended series metadata.

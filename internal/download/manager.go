@@ -107,6 +107,12 @@ func (m *Manager) SetProgressCallback(cb func(ProgressUpdate)) {
 // Add adds a new download to the queue.
 // Returns empty string and sets error if URL is invalid.
 func (m *Manager) Add(name, urlStr string) string {
+	return m.AddWithPath(name, urlStr, "")
+}
+
+// AddWithPath adds a download with optional subpath (e.g., "SeriesName/Season 1").
+// Returns empty string and sets error if URL is invalid.
+func (m *Manager) AddWithPath(name, urlStr, subPath string) string {
 	// Validate URL before adding to queue
 	if err := validateURL(urlStr); err != nil {
 		return ""
@@ -120,7 +126,15 @@ func (m *Manager) Add(name, urlStr string) string {
 
 	// Sanitize filename
 	safeName := sanitizeFilename(name)
-	filePath := filepath.Join(m.downloadDir, safeName)
+
+	// Build file path with optional subfolder
+	var filePath string
+	if subPath != "" {
+		safeSubPath := sanitizePath(subPath)
+		filePath = filepath.Join(m.downloadDir, safeSubPath, safeName)
+	} else {
+		filePath = filepath.Join(m.downloadDir, safeName)
+	}
 
 	item := &Item{
 		ID:       id,
@@ -400,4 +414,23 @@ func sanitizeFilename(name string) string {
 		s = "download"
 	}
 	return s
+}
+
+// sanitizePath sanitizes a path with multiple segments (e.g., "Series/Season 1").
+// Preserves path separators but sanitizes each segment.
+func sanitizePath(path string) string {
+	// Split by path separators
+	segments := strings.Split(path, "/")
+	sanitized := make([]string, 0, len(segments))
+
+	for _, seg := range segments {
+		if seg == "" {
+			continue
+		}
+		// Sanitize each segment like a filename
+		safeSeg := sanitizeFilename(seg)
+		sanitized = append(sanitized, safeSeg)
+	}
+
+	return filepath.Join(sanitized...)
 }

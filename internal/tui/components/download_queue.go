@@ -99,10 +99,24 @@ func (d *DownloadQueue) SelectedID() string {
 	return ""
 }
 
-// Update handles keyboard input.
+// Update handles keyboard input and progress bar animations.
 func (d *DownloadQueue) Update(msg tea.Msg) tea.Cmd {
+	var cmds []tea.Cmd
+
+	// Update all progress bars for smooth animation
+	switch msg.(type) {
+	case progress.FrameMsg:
+		for id, bar := range d.progressBars {
+			newBar, cmd := bar.Update(msg)
+			d.progressBars[id] = newBar.(progress.Model)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+
 	if !d.visible {
-		return nil
+		return tea.Batch(cmds...)
 	}
 
 	switch msg := msg.(type) {
@@ -118,7 +132,16 @@ func (d *DownloadQueue) Update(msg tea.Msg) tea.Cmd {
 			}
 		}
 	}
-	return nil
+
+	return tea.Batch(cmds...)
+}
+
+// UpdateProgress updates the progress for a specific download with animation.
+func (d *DownloadQueue) UpdateProgress(id string, percent float64) tea.Cmd {
+	bar := d.getProgressBar(id)
+	cmd := bar.SetPercent(percent)
+	d.progressBars[id] = bar
+	return cmd
 }
 
 // View renders the download queue panel.
@@ -149,6 +172,12 @@ func (d *DownloadQueue) View() string {
 	dimStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241"))
 
+	successStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("82"))
+
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196"))
+
 	var b strings.Builder
 
 	b.WriteString(titleStyle.Render("Downloads"))
@@ -164,16 +193,26 @@ func (d *DownloadQueue) View() string {
 		icon := statusIcon(item.Status)
 
 		// Progress bar for downloading items
-		var progress string
+		var progressStr string
 		if item.Status == download.StatusDownloading {
-			progress = renderProgressBar(item.Progress, 20)
-			progress += fmt.Sprintf(" %.0f%%", item.Progress*100)
+			bar := d.getProgressBar(item.ID)
+			progressStr = bar.ViewAs(item.Progress)
+			progressStr += fmt.Sprintf(" %.0f%%", item.Progress*100)
+
+			// Speed/size info
+			if item.Size > 0 {
+				progressStr += fmt.Sprintf(" (%s / %s)",
+					formatBytes(item.Downloaded),
+					formatBytes(item.Size))
+			}
 		} else if item.Status == download.StatusCompleted {
-			progress = "Complete"
+			progressStr = successStyle.Render("✓ Complete")
 		} else if item.Status == download.StatusFailed && item.Error != nil {
-			progress = "Error: " + truncate(item.Error.Error(), 20)
+			progressStr = errorStyle.Render("✗ " + truncate(item.Error.Error(), 25))
+		} else if item.Status == download.StatusCancelled {
+			progressStr = dimStyle.Render("⊘ Cancelled")
 		} else {
-			progress = item.Status.String()
+			progressStr = dimStyle.Render("⏳ " + item.Status.String())
 		}
 
 		// Truncate name
@@ -182,7 +221,7 @@ func (d *DownloadQueue) View() string {
 		line := fmt.Sprintf("%s %s", icon, name)
 		b.WriteString(style.Render(line))
 		b.WriteString("\n")
-		b.WriteString(dimStyle.Render("  " + progress))
+		b.WriteString("  " + progressStr)
 		b.WriteString("\n")
 	}
 
@@ -235,4 +274,17 @@ func truncate(s string, maxLen int) string {
 		return s[:maxLen]
 	}
 	return s[:maxLen-3] + "..."
+}
+
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }

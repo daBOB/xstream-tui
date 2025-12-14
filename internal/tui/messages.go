@@ -14,6 +14,7 @@ const (
 	StreamsScreen
 	SeasonsScreen
 	EpisodesScreen
+	SeriesBrowserScreen
 	PlayerScreen
 )
 
@@ -141,8 +142,10 @@ type EpisodeSelectedMsg struct {
 
 // DownloadRequestMsg requests adding a download to the queue.
 type DownloadRequestMsg struct {
-	Name string
-	URL  string
+	Name       string
+	URL        string
+	SeriesName string // Optional: for series episodes, creates subfolder
+	SeasonName string // Optional: for series episodes, creates subfolder
 }
 
 // DownloadProgressMsg reports download progress updates.

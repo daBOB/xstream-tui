@@ -29,6 +29,7 @@ func main() {
 	streams := screens.NewStreamsModel()
 	seasons := screens.NewSeasonsModel()
 	episodes := screens.NewEpisodesModel()
+	seriesBrowser := screens.NewSeriesBrowserModel()
 
 	// Inject screens into app
 	app.SetLoginScreen(login)
@@ -37,6 +38,7 @@ func main() {
 	app.SetStreamsScreen(streams)
 	app.SetSeasonsScreen(seasons)
 	app.SetEpisodesScreen(episodes)
+	app.SetSeriesBrowserScreen(seriesBrowser)
 
 	// Initialize download manager
 	downloadDir := getDownloadDir()
@@ -66,10 +68,10 @@ func getDownloadDir() string {
 		return dir
 	}
 
-	// Use ~/Downloads/xstream-tui as default
+	// Use ~/Videos/xstream as default
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "./downloads"
 	}
-	return filepath.Join(home, "Downloads", "xstream-tui")
+	return filepath.Join(home, "Videos", "xstream")
 }
