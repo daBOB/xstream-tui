@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/progress"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -13,19 +14,36 @@ import (
 
 // DownloadQueue displays the download queue as an overlay panel.
 type DownloadQueue struct {
-	items    []download.Item
-	selected int
-	width    int
-	height   int
-	visible  bool
+	items      []download.Item
+	selected   int
+	width      int
+	height     int
+	visible    bool
+	progressBars map[string]progress.Model
 }
 
 // NewDownloadQueue creates a new download queue component.
 func NewDownloadQueue() *DownloadQueue {
 	return &DownloadQueue{
-		items:   make([]download.Item, 0),
-		visible: false,
+		items:        make([]download.Item, 0),
+		visible:      false,
+		progressBars: make(map[string]progress.Model),
 	}
+}
+
+// getProgressBar returns or creates an animated progress bar for the given ID.
+func (d *DownloadQueue) getProgressBar(id string) progress.Model {
+	if bar, ok := d.progressBars[id]; ok {
+		return bar
+	}
+
+	bar := progress.New(
+		progress.WithGradient("#7D56F4", "#00D9FF"),
+		progress.WithWidth(30),
+		progress.WithoutPercentage(),
+	)
+	d.progressBars[id] = bar
+	return bar
 }
 
 // SetSize sets the component dimensions.
@@ -39,6 +57,17 @@ func (d *DownloadQueue) SetItems(items []download.Item) {
 	d.items = items
 	if d.selected >= len(items) && len(items) > 0 {
 		d.selected = len(items) - 1
+	}
+
+	// Clean up progress bars for removed items
+	activeIDs := make(map[string]bool)
+	for _, item := range items {
+		activeIDs[item.ID] = true
+	}
+	for id := range d.progressBars {
+		if !activeIDs[id] {
+			delete(d.progressBars, id)
+		}
 	}
 }
 

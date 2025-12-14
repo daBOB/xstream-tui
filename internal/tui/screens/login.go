@@ -3,6 +3,7 @@ package screens
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -61,7 +62,29 @@ func NewLoginModel() *LoginModel {
 	m.inputs[inputPass].CharLimit = 50
 	m.inputs[inputPass].Width = 30
 
+	// Pre-populate from environment variables
+	m.loadFromEnv()
+
 	return m
+}
+
+// loadFromEnv pre-populates fields from environment variables.
+func (m *LoginModel) loadFromEnv() {
+	if host := os.Getenv("XSTREAM_HOST"); host != "" {
+		// Strip protocol prefix if present
+		host = strings.TrimPrefix(host, "http://")
+		host = strings.TrimPrefix(host, "https://")
+		m.inputs[inputHost].SetValue(host)
+	}
+	if port := os.Getenv("XSTREAM_PORT"); port != "" {
+		m.inputs[inputPort].SetValue(port)
+	}
+	if user := os.Getenv("XSTREAM_USERNAME"); user != "" {
+		m.inputs[inputUser].SetValue(user)
+	}
+	if pass := os.Getenv("XSTREAM_PASSWORD"); pass != "" {
+		m.inputs[inputPass].SetValue(pass)
+	}
 }
 
 // Focus sets focus to the first input.
