@@ -148,6 +148,9 @@ func (m *LoginModel) submit() tea.Cmd {
 		return nil
 	}
 
+	// Clear password from input field for security
+	m.inputs[inputPass].SetValue("")
+
 	// Default port
 	if port == "" {
 		port = "8080"

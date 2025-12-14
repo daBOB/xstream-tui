@@ -626,10 +626,301 @@ Handled at appropriate level
 - Cache efficiency under load
 - Memory profiling
 
+## Integration Patterns (Phase 5)
+
+### Complete Message Flow
+
+Integration wires three layers (Presentation → Auth → Data → Playback) through tea.Cmd async pattern and message-driven architecture.
+
+#### Login → Auth → XC Client
+
+```
+User Input (LoginScreen)
+    │
+    ├─→ TextInput fields (host, port, user, pass)
+    │   └─→ Form validation (non-empty fields)
+    │
+    ├─→ Enter key on password field
+    │   └─→ submit() returns tea.Cmd
+    │
+    ├─→ Cmd executes async:
+    │   │
+    │   ├─→ xc.NewClient(url, user, pass)
+    │   │   └─→ Client initialized
+    │   │
+    │   ├─→ client.Authenticate(ctx) via HTTP
+    │   │   └─→ GET /api/user?username=...&password=...
+    │   │
+    │   └─→ Return AuthSuccessMsg or AuthErrorMsg
+    │
+    ├─→ App.Update(AuthSuccessMsg)
+    │   ├─→ Store client in app.client
+    │   ├─→ Clear password from memory (security)
+    │   ├─→ Store UserInfo (username, expiration, etc)
+    │   └─→ navigateTo(ContentTypeScreen)
+    │
+    └─→ On AuthErrorMsg:
+        ├─→ Display error in login form
+        └─→ User can retry
+```
+
+**Key Patterns:**
+- Password cleared immediately after successful auth (line 144 in app.go)
+- Form input cleared on submit for security (login.go:152)
+- Async command prevents UI freeze during HTTP request
+- Error handling delegates back to login screen for retry
+
+#### ContentType → Categories → API Loading
+
+```
+User selects content type (Live/VOD/Series)
+    │
+    ├─→ ContentTypeScreen.Update() returns tea.Cmd
+    │   └─→ ContentTypeSelectedMsg
+    │
+    ├─→ App.Update(ContentTypeSelectedMsg)
+    │   ├─→ Store currentType in app state
+    │   ├─→ Set loading flag
+    │   └─→ navigateTo(CategoriesScreen)
+    │
+    ├─→ navigateTo() initializes next screen:
+    │   ├─→ SetClient(app.client) - inject shared client
+    │   ├─→ SetContentType(currentType) - triggers load
+    │   └─→ Returns tea.Cmd from screen init
+    │
+    ├─→ SetContentType() → loadCategories() cmd:
+    │   │
+    │   ├─→ Check cache first
+    │   │   └─→ Cache key: content_type
+    │   │
+    │   ├─→ If cached & valid TTL:
+    │   │   └─→ Return CategoriesLoadedMsg immediately
+    │   │
+    │   └─→ If expired or missing:
+    │       ├─→ client.GetCategories(ctx, contentType)
+    │       ├─→ Await API response
+    │       └─→ Return CategoriesLoadedMsg with data
+    │
+    ├─→ App.Update(CategoriesLoadedMsg)
+    │   ├─→ Set loading = false
+    │   ├─→ Pass to CategoriesScreen for rendering
+    │   └─→ Return spinner stop cmd
+    │
+    └─→ CategoriesScreen renders categories list
+```
+
+**Key Patterns:**
+- Dependency injection through SetClient/SetContentType
+- SetContentType() returns tea.Cmd for async loading
+- Navigation triggers initial data load
+- Loading spinner controlled by App.loading flag
+
+#### Streams → Player Launch
+
+```
+User selects category → StreamsScreen populated
+    │
+    ├─→ CategorySelectedMsg triggers:
+    │   ├─→ Store currentCat
+    │   ├─→ Set loading flag
+    │   └─→ navigateTo(StreamsScreen)
+    │
+    ├─→ navigateTo(StreamsScreen):
+    │   ├─→ SetClient(client)
+    │   ├─→ SetCategory(cat, contentType) → load streams async
+    │   └─→ Spinner tick begins
+    │
+    ├─→ StreamsLoadedMsg:
+    │   ├─→ Populate list with streams
+    │   └─→ Stop spinner
+    │
+    ├─→ User selects stream → StreamSelectedMsg
+    │   ├─→ Extract URL and stream name
+    │   └─→ Return tea.Cmd
+    │
+    ├─→ App.Update(StreamSelectedMsg):
+    │   ├─→ startPlayback(url, name) → tea.Cmd
+    │   └─→ Returns cmd that will execute in loop
+    │
+    ├─→ startPlayback() cmd executes:
+    │   │
+    │   ├─→ Cancel previous playerStop context
+    │   ├─→ Create new context for current playback
+    │   ├─→ player.Play(ctx, url, title)
+    │   │   ├─→ Try mpv (full featured)
+    │   │   └─→ Fallback to VLC if mpv fails
+    │   │
+    │   └─→ Return PlayerStartedMsg or ErrorMsg
+    │
+    ├─→ Player runs in background (its own process)
+    │   └─→ TUI remains responsive during playback
+    │
+    ├─→ player.Stop() context cancel closes player
+    │   └─→ Exit callback → PlayerStoppedMsg
+    │
+    └─→ User presses 'q' on StreamsScreen
+        ├─→ App detects key
+        ├─→ Call app.StopPlayback()
+        └─→ PlayerStoppedMsg
+```
+
+**Key Patterns:**
+- Navigation chain: ContentType → Categories → Streams → Player
+- Each screen receives client + type info via setters
+- Async loading commands prevent UI blocking
+- Player isolated in separate process; TUI stays responsive
+
+### Navigation Stack Management
+
+```go
+// Stack-based navigation (app.go)
+app.navStack []Screen  // History of screens visited
+
+// Forward navigation (navigateTo)
+navigateTo(screen) {
+    navStack.append(current)  // Save current to stack
+    current = screen          // Switch to new screen
+    // Initialize new screen with data
+}
+
+// Backward navigation (navigateBack)
+navigateBack() {
+    current = navStack.pop()  // Restore previous
+    // Keep state intact
+}
+
+// Global key handling (app.go:125-135)
+Ctrl+C → Quit           // Always available
+Esc → navigateBack()    // Except on LoginScreen
+Q → Quit               // Only on Login/ContentType
+
+// State preserved across navigation
+app.client              // Persists through all screens
+app.userInfo            // Persists (username, account info)
+app.currentType         // Persists (Live/VOD/Series selection)
+app.currentCat          // Persists (category context)
+```
+
+### Async Pattern with tea.Cmd
+
+Tea.Cmd is a function that returns a message (blocking operation → non-blocking):
+
+```go
+type Cmd func() Msg
+
+// Example: LoadCategories cmd
+func (m *CategoriesModel) loadCategories() tea.Cmd {
+    return func() tea.Msg {
+        // This runs in background thread
+        categories, err := client.GetCategories(ctx)
+        if err != nil {
+            return tui.ErrorMsg{Err: err}
+        }
+        return tui.CategoriesLoadedMsg{Categories: categories}
+    }
+}
+
+// Usage in Update
+return a.navigateTo(CategoriesScreen)
+// Returns (app, cmd)
+// Cmd executes in event loop → produces message → Update again
+
+// Result
+App.Update(msg)
+    ├─→ Cmd returns → executes async
+    │   └─→ Blocking API call
+    │
+    ├─→ Result becomes message
+    │   └─→ CategoriesLoadedMsg
+    │
+    └─→ App.Update(CategoriesLoadedMsg)
+        └─→ Render loaded data
+```
+
+**Command Batching:**
+
+```go
+// Single command
+return a, cmd
+
+// Multiple parallel commands
+return a, tea.Batch(cmd1, cmd2, cmd3)
+
+// Example: Navigation + Spinner
+if a.loading {
+    return a, tea.Batch(cmd, a.spinnerTick())
+}
+return a, cmd
+```
+
+### Message Flow Architecture
+
+All messages route through central `App.Update()`:
+
+```
+Bubble Tea Event Loop
+    │
+    ├─→ Receive: tea.KeyMsg, tea.WindowSizeMsg, Custom messages
+    │
+    ├─→ App.Update(msg)
+    │   ├─→ Handle global keys (Ctrl+C, Esc, Q)
+    │   │
+    │   ├─→ Handle navigation msgs (AuthSuccessMsg, etc)
+    │   │
+    │   ├─→ Update app state (loading, errorMsg, currentType, etc)
+    │   │
+    │   └─→ Forward to screen: updateScreen(msg)
+    │       └─→ Screen.Update(msg) → returns tea.Cmd
+    │
+    ├─→ Execute returned Cmd
+    │   ├─→ Async operation (API call, file I/O)
+    │   └─→ Result becomes new message
+    │
+    └─→ Loop back to Update
+
+// Screen message types (messages.go)
+AuthSuccessMsg           // Login success → navigation trigger
+AuthErrorMsg             // Login fail → error display
+ContentTypeSelectedMsg   // Navigation: ContentType → Categories
+CategorySelectedMsg      // Navigation: Categories → Streams
+StreamSelectedMsg        // Navigation: Streams → Player
+CategoriesLoadedMsg      // Data arrival
+StreamsLoadedMsg         // Data arrival
+PlayerStartedMsg         // Playback event
+PlayerStoppedMsg         // Playback end
+ErrorMsg                 // Generic error
+LoadingMsg               // Loading state
+SpinnerTickMsg           // Animation tick
+```
+
+### Error Handling Integration
+
+Errors propagate through message chain:
+
+```
+API Error (network, auth, etc)
+    │
+    ├─→ Wrapped: fmt.Errorf("operation: %w", err)
+    │
+    ├─→ Cmd returns ErrorMsg{Err: err}
+    │   └─→ App.Update(ErrorMsg)
+    │       ├─→ Set loading = false
+    │       ├─→ Set errorMsg string
+    │       └─→ Render error overlay (app.go:349)
+    │
+    ├─→ Error persists until:
+    │   ├─→ User presses Esc (clears overlay)
+    │   ├─→ Navigation (clears error)
+    │   └─→ ClearErrorMsg
+    │
+    └─→ View renders error bar at bottom
+        └─→ renderWithError(content) overlays red bar
+```
+
 ---
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Last Updated:** 2025-12-14
-**Phases Complete:** Phase 1 (TUI Foundation) + Phase 2 (Data Layer) + Phase 3 (API Client) + Phase 4 (Playback Layer)
-**Status:** Playback Layer complete with mpv IPC and VLC fallback
-**Next Review:** Phase 5 (PlayerScreen UI Implementation)
+**Phases Complete:** Phase 1 (TUI) + Phase 2 (Data Layer) + Phase 3 (API Client) + Phase 4 (Playback Layer) + Phase 5 (Integration)
+**Status:** Full integration with auth, navigation, async loading, and playback
+**Integration Tests:** 11 new tests covering message flow and state transitions

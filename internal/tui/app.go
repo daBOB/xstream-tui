@@ -40,7 +40,6 @@ type App struct {
 
 	// Player
 	player     *player.Manager
-	playerCtx  context.Context
 	playerStop context.CancelFunc
 }
 
@@ -309,6 +308,8 @@ func (a *App) spinnerTick() tea.Cmd {
 }
 
 // startPlayback launches the media player.
+// Note: Player runs in background, mpv handles its own window.
+// TUI remains active while player is running.
 func (a *App) startPlayback(url, title string) tea.Cmd {
 	return func() tea.Msg {
 		// Cancel any previous playback context
@@ -317,14 +318,7 @@ func (a *App) startPlayback(url, title string) tea.Cmd {
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		a.playerCtx = ctx
 		a.playerStop = cancel
-
-		// Register exit callback
-		a.player.OnExit(func(err error) {
-			// Note: This runs in a goroutine, cannot send tea.Msg directly
-			// The UI will check IsPlaying() state
-		})
 
 		if err := a.player.Play(ctx, url, title); err != nil {
 			return ErrorMsg{Err: err}
