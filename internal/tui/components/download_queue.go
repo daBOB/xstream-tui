@@ -14,11 +14,12 @@ import (
 
 // DownloadQueue displays the download queue as an overlay panel.
 type DownloadQueue struct {
-	items      []download.Item
-	selected   int
-	width      int
-	height     int
-	visible    bool
+	items        []download.Item
+	selected     int
+	offset       int // scroll offset for viewport
+	width        int
+	height       int
+	visible      bool
 	progressBars map[string]progress.Model
 }
 
@@ -58,6 +59,11 @@ func (d *DownloadQueue) SetItems(items []download.Item) {
 	if d.selected >= len(items) && len(items) > 0 {
 		d.selected = len(items) - 1
 	}
+	if d.selected < 0 {
+		d.selected = 0
+	}
+	// Adjust offset to ensure selection is visible
+	d.adjustOffset()
 
 	// Clean up progress bars for removed items
 	activeIDs := make(map[string]bool)
@@ -123,12 +129,20 @@ func (d *DownloadQueue) Update(msg tea.Msg) tea.Cmd {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
-			if d.selected > 0 {
-				d.selected--
-			}
+			d.moveUp(1)
 		case "down", "j":
-			if d.selected < len(d.items)-1 {
-				d.selected++
+			d.moveDown(1)
+		case "pgup", "ctrl+u":
+			d.moveUp(d.visibleItems() / 2)
+		case "pgdown", "ctrl+d":
+			d.moveDown(d.visibleItems() / 2)
+		case "home", "g":
+			d.selected = 0
+			d.offset = 0
+		case "end", "G":
+			if len(d.items) > 0 {
+				d.selected = len(d.items) - 1
+				d.adjustOffset()
 			}
 		}
 	}
@@ -144,16 +158,82 @@ func (d *DownloadQueue) UpdateProgress(id string, percent float64) tea.Cmd {
 	return cmd
 }
 
-// View renders the download queue panel.
+// visibleItems returns how many items can fit in the viewport.
+// Each item takes 3 lines (name, progress, blank line).
+func (d *DownloadQueue) visibleItems() int {
+	// Account for header (title + stats + spacing) ~6 lines and footer help ~2 lines
+	availableHeight := d.height - 10
+	if availableHeight < 3 {
+		return 1
+	}
+	// Each item = 3 lines (name + progress + blank)
+	return availableHeight / 3
+}
+
+// moveUp moves selection up by n items and adjusts scroll offset.
+func (d *DownloadQueue) moveUp(n int) {
+	if d.selected > 0 {
+		d.selected -= n
+		if d.selected < 0 {
+			d.selected = 0
+		}
+		if d.selected < d.offset {
+			d.offset = d.selected
+		}
+	}
+}
+
+// moveDown moves selection down by n items and adjusts scroll offset.
+func (d *DownloadQueue) moveDown(n int) {
+	if len(d.items) == 0 {
+		return
+	}
+	d.selected += n
+	if d.selected >= len(d.items) {
+		d.selected = len(d.items) - 1
+	}
+	d.adjustOffset()
+}
+
+// adjustOffset ensures the selected item is visible in the viewport.
+func (d *DownloadQueue) adjustOffset() {
+	visible := d.visibleItems()
+	if visible <= 0 {
+		visible = 1
+	}
+	if d.selected >= d.offset+visible {
+		d.offset = d.selected - visible + 1
+	}
+	if d.offset < 0 {
+		d.offset = 0
+	}
+}
+
+// View renders the download queue as a full-screen view.
 func (d *DownloadQueue) View() string {
-	if !d.visible || len(d.items) == 0 {
+	if !d.visible {
 		return ""
 	}
 
-	// Panel styling
-	panelWidth := 60
-	if d.width > 0 && d.width < panelWidth+10 {
-		panelWidth = d.width - 10
+	// Use full width with padding
+	contentWidth := d.width - 8
+	if contentWidth < 40 {
+		contentWidth = 40
+	}
+
+	// Progress bar width scales with screen
+	progressBarWidth := contentWidth - 30
+	if progressBarWidth < 20 {
+		progressBarWidth = 20
+	}
+	if progressBarWidth > 60 {
+		progressBarWidth = 60
+	}
+
+	// Update progress bar widths
+	for id, bar := range d.progressBars {
+		bar.Width = progressBarWidth
+		d.progressBars[id] = bar
 	}
 
 	titleStyle := lipgloss.NewStyle().
@@ -162,10 +242,10 @@ func (d *DownloadQueue) View() string {
 		MarginBottom(1)
 
 	itemStyle := lipgloss.NewStyle().
-		Width(panelWidth - 4)
+		Width(contentWidth)
 
 	selectedStyle := lipgloss.NewStyle().
-		Width(panelWidth - 4).
+		Width(contentWidth).
 		Background(lipgloss.Color("62")).
 		Foreground(lipgloss.Color("230"))
 
@@ -180,62 +260,102 @@ func (d *DownloadQueue) View() string {
 
 	var b strings.Builder
 
-	b.WriteString(titleStyle.Render("Downloads"))
-	b.WriteString("\n")
+	// Header
+	b.WriteString(titleStyle.Render("📥 Download Queue"))
+	b.WriteString("\n\n")
 
-	for i, item := range d.items {
-		style := itemStyle
-		if i == d.selected {
-			style = selectedStyle
-		}
-
-		// Status icon
-		icon := statusIcon(item.Status)
-
-		// Progress bar for downloading items
-		var progressStr string
-		if item.Status == download.StatusDownloading {
-			bar := d.getProgressBar(item.ID)
-			progressStr = bar.ViewAs(item.Progress)
-			progressStr += fmt.Sprintf(" %.0f%%", item.Progress*100)
-
-			// Speed/size info
-			if item.Size > 0 {
-				progressStr += fmt.Sprintf(" (%s / %s)",
-					formatBytes(item.Downloaded),
-					formatBytes(item.Size))
+	if len(d.items) == 0 {
+		b.WriteString(dimStyle.Render("No downloads in queue"))
+		b.WriteString("\n")
+	} else {
+		// Stats
+		queued, downloading, completed, failed := 0, 0, 0, 0
+		for _, item := range d.items {
+			switch item.Status {
+			case download.StatusQueued:
+				queued++
+			case download.StatusDownloading:
+				downloading++
+			case download.StatusCompleted:
+				completed++
+			case download.StatusFailed, download.StatusCancelled:
+				failed++
 			}
-		} else if item.Status == download.StatusCompleted {
-			progressStr = successStyle.Render("✓ Complete")
-		} else if item.Status == download.StatusFailed && item.Error != nil {
-			progressStr = errorStyle.Render("✗ " + truncate(item.Error.Error(), 25))
-		} else if item.Status == download.StatusCancelled {
-			progressStr = dimStyle.Render("⊘ Cancelled")
+		}
+		stats := fmt.Sprintf("Total: %d  │  Queued: %d  │  Downloading: %d  │  Completed: %d  │  Failed: %d",
+			len(d.items), queued, downloading, completed, failed)
+		// Scroll indicator
+		visible := d.visibleItems()
+		if len(d.items) > visible {
+			scrollInfo := fmt.Sprintf("  │  Showing %d-%d", d.offset+1, min(d.offset+visible, len(d.items)))
+			b.WriteString(dimStyle.Render(stats + scrollInfo))
 		} else {
-			progressStr = dimStyle.Render("⏳ " + item.Status.String())
+			b.WriteString(dimStyle.Render(stats))
+		}
+		b.WriteString("\n\n")
+
+		// Items - only render visible portion
+		endIdx := d.offset + visible
+		if endIdx > len(d.items) {
+			endIdx = len(d.items)
 		}
 
-		// Truncate name
-		name := truncate(item.Name, panelWidth-10)
+		for i := d.offset; i < endIdx; i++ {
+			item := d.items[i]
+			style := itemStyle
+			if i == d.selected {
+				style = selectedStyle
+			}
 
-		line := fmt.Sprintf("%s %s", icon, name)
-		b.WriteString(style.Render(line))
-		b.WriteString("\n")
-		b.WriteString("  " + progressStr)
-		b.WriteString("\n")
+			// Status icon
+			icon := statusIcon(item.Status)
+
+			// Progress bar for downloading items
+			var progressStr string
+			if item.Status == download.StatusDownloading {
+				bar := d.getProgressBar(item.ID)
+				progressStr = bar.ViewAs(item.Progress)
+				progressStr += fmt.Sprintf(" %.0f%%", item.Progress*100)
+
+				// Speed/size info
+				if item.Size > 0 {
+					progressStr += fmt.Sprintf("  (%s / %s)",
+						formatBytes(item.Downloaded),
+						formatBytes(item.Size))
+				}
+			} else if item.Status == download.StatusCompleted {
+				progressStr = successStyle.Render("✓ Complete")
+			} else if item.Status == download.StatusFailed && item.Error != nil {
+				progressStr = errorStyle.Render("✗ " + truncate(item.Error.Error(), 40))
+			} else if item.Status == download.StatusCancelled {
+				progressStr = dimStyle.Render("⊘ Cancelled")
+			} else {
+				progressStr = dimStyle.Render("⏳ " + item.Status.String())
+			}
+
+			// Truncate name to fit screen
+			name := truncate(item.Name, contentWidth-10)
+
+			line := fmt.Sprintf("%s %s", icon, name)
+			b.WriteString(style.Render(line))
+			b.WriteString("\n")
+			b.WriteString("    " + progressStr)
+			b.WriteString("\n\n")
+		}
 	}
 
+	// Help text at bottom
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("[d] Cancel  [x] Remove  [Esc] Close"))
+	helpKeys := "[↑↓/jk] Navigate  [PgUp/PgDn] Scroll  [g/G] Top/Bottom  [d] Cancel  [x] Remove  [Esc] Close"
+	b.WriteString(dimStyle.Render(helpKeys))
 
-	// Panel border
-	panelStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
-		Padding(1, 2).
-		Width(panelWidth)
+	// Full screen container with padding
+	containerStyle := lipgloss.NewStyle().
+		Width(d.width).
+		Height(d.height).
+		Padding(2, 4)
 
-	return panelStyle.Render(b.String())
+	return containerStyle.Render(b.String())
 }
 
 func statusIcon(status download.Status) string {

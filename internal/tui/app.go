@@ -4,6 +4,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -255,8 +256,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		// Toggle download queue with 'D'
-		if msg.String() == "D" && a.screen != LoginScreen {
+		// Toggle download queue with 'Q' (global shortcut)
+		if msg.String() == "Q" && a.screen != LoginScreen {
 			a.downloadQueue.Toggle()
 			if a.downloadQueue.Visible() && a.downloader != nil {
 				a.downloadQueue.SetItems(a.downloader.Queue())
@@ -405,9 +406,32 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case BatchDownloadMsg:
+		if a.downloader != nil && len(msg.Downloads) > 0 {
+			for _, dl := range msg.Downloads {
+				var subPath string
+				if dl.SeriesName != "" {
+					subPath = dl.SeriesName
+					if dl.SeasonName != "" {
+						subPath = subPath + "/" + dl.SeasonName
+					}
+				}
+				a.downloader.AddWithPath(dl.Name, dl.URL, subPath)
+			}
+			a.errorMsg = fmt.Sprintf("Added %d episodes to queue - Press 'Q' to view", len(msg.Downloads))
+		}
+		return a, nil
+
 	case DownloadProgressMsg:
 		// Progress is now handled by daemon
 		return a, tea.Batch(cmds...)
+
+	case DownloadQueueToggleMsg:
+		a.downloadQueue.Toggle()
+		if a.downloadQueue.Visible() && a.downloader != nil {
+			a.downloadQueue.SetItems(a.downloader.Queue())
+		}
+		return a, nil
 	}
 
 	// Forward to current screen
@@ -594,22 +618,10 @@ func (a *App) View() string {
 	return content
 }
 
-// renderWithDownloadQueue renders content with download queue overlay.
-func (a *App) renderWithDownloadQueue(content string) string {
+// renderWithDownloadQueue renders the download queue as full-screen view.
+func (a *App) renderWithDownloadQueue(_ string) string {
 	a.downloadQueue.SetSize(a.width, a.height)
-	queueView := a.downloadQueue.View()
-	if queueView == "" {
-		return content
-	}
-
-	// Position queue panel on the right side using Place
-	overlay := lipgloss.Place(
-		a.width, a.height,
-		lipgloss.Right, lipgloss.Top,
-		queueView,
-	)
-
-	return overlay
+	return a.downloadQueue.View()
 }
 
 // renderWithStatusBar renders content with a status bar at the bottom.

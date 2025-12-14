@@ -294,8 +294,9 @@ func (m *Manager) processQueue() {
 }
 
 func (m *Manager) download(ctx context.Context, item *Item) error {
-	// Ensure download directory exists
-	if err := os.MkdirAll(m.downloadDir, 0755); err != nil {
+	// Ensure download directory exists (including any subfolders for series/season)
+	fileDir := filepath.Dir(item.FilePath)
+	if err := os.MkdirAll(fileDir, 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
 

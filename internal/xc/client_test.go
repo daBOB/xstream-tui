@@ -428,10 +428,12 @@ func TestClient_GetSeriesInfo(t *testing.T) {
 		}
 
 		info := SeriesInfo{
-			Info: SeriesDetails{
-				Name: "The Office",
+			Info: FlexibleSeriesInfo{
+				SeriesDetails: SeriesDetails{
+					Name: "The Office",
+				},
 			},
-			Seasons: []SeasonInfo{
+			Seasons: FlexibleSeasons{
 				{SeasonNumber: NewFlexibleID(1), EpisodeCount: NewFlexibleID(6)},
 			},
 		}

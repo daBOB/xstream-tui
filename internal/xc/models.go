@@ -125,6 +125,65 @@ func (f FlexibleFloat) Float64() float64 {
 	return float64(f)
 }
 
+// FlexibleEpisodes handles episodes that may be returned as empty array or map.
+// XC APIs return "episodes": [] when empty and "episodes": {"1": [...]} when populated.
+type FlexibleEpisodes map[string][]Episode
+
+// UnmarshalJSON implements json.Unmarshaler for FlexibleEpisodes.
+func (f *FlexibleEpisodes) UnmarshalJSON(data []byte) error {
+	// Check for empty array (common XC API behavior)
+	if string(data) == "[]" || string(data) == "null" {
+		*f = make(FlexibleEpisodes)
+		return nil
+	}
+
+	// Try as map with string keys (standard format)
+	var m map[string][]Episode
+	if err := json.Unmarshal(data, &m); err == nil {
+		*f = FlexibleEpisodes(m)
+		return nil
+	}
+
+	// Try as map with integer keys (some providers use numeric keys)
+	var intMap map[int][]Episode
+	if err := json.Unmarshal(data, &intMap); err == nil {
+		*f = make(FlexibleEpisodes)
+		for k, v := range intMap {
+			(*f)[strconv.Itoa(k)] = v
+		}
+		return nil
+	}
+
+	// Initialize empty if all else fails
+	*f = make(FlexibleEpisodes)
+	return nil
+}
+
+// FlexibleSeasons handles seasons that may be returned as array, false, or null.
+// XC APIs sometimes return "seasons": false when no seasons exist.
+type FlexibleSeasons []SeasonInfo
+
+// UnmarshalJSON implements json.Unmarshaler for FlexibleSeasons.
+func (f *FlexibleSeasons) UnmarshalJSON(data []byte) error {
+	// Check for false/null (common XC API behavior)
+	s := string(data)
+	if s == "false" || s == "null" || s == "[]" {
+		*f = make(FlexibleSeasons, 0)
+		return nil
+	}
+
+	// Try as array
+	var arr []SeasonInfo
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*f = arr
+		return nil
+	}
+
+	// Initialize empty if all else fails
+	*f = make(FlexibleSeasons, 0)
+	return nil
+}
+
 // UserInfo represents authenticated user account information.
 type UserInfo struct {
 	Username       string     `json:"username"`
@@ -208,9 +267,9 @@ type Series struct {
 
 // SeriesInfo contains detailed series information with episodes.
 type SeriesInfo struct {
-	Seasons  []SeasonInfo         `json:"seasons"`
-	Episodes map[string][]Episode `json:"episodes"` // Keyed by season number
-	Info     SeriesDetails        `json:"info"`
+	Seasons  FlexibleSeasons    `json:"seasons"`
+	Episodes FlexibleEpisodes   `json:"episodes"` // Keyed by season number
+	Info     FlexibleSeriesInfo `json:"info"`
 }
 
 // SeasonInfo represents a season within a series.
@@ -247,20 +306,73 @@ type EpisodeInfo struct {
 
 // SeriesDetails contains extended series metadata.
 type SeriesDetails struct {
-	Name           string     `json:"name"`
-	Cover          string     `json:"cover"`
-	Plot           string     `json:"plot"`
-	Cast           string     `json:"cast"`
-	Director       string     `json:"director"`
-	Genre          string     `json:"genre"`
-	ReleaseDate    string     `json:"releaseDate"`
-	LastModified   FlexibleID `json:"last_modified"`
-	Rating         string     `json:"rating"`
-	Rating5Based   FlexibleFloat `json:"rating_5based"`
-	BackdropPath   []string   `json:"backdrop_path"`
-	YoutubeTrailer string     `json:"youtube_trailer"`
-	TMDbID         FlexibleID `json:"tmdb_id"`
-	CategoryID     FlexibleID `json:"category_id"`
+	Name           string            `json:"name"`
+	Cover          string            `json:"cover"`
+	Plot           string            `json:"plot"`
+	Cast           string            `json:"cast"`
+	Director       string            `json:"director"`
+	Genre          string            `json:"genre"`
+	ReleaseDate    string            `json:"releaseDate"`
+	LastModified   FlexibleID        `json:"last_modified"`
+	Rating         string            `json:"rating"`
+	Rating5Based   FlexibleFloat     `json:"rating_5based"`
+	BackdropPath   FlexibleStringArr `json:"backdrop_path"`
+	YoutubeTrailer string            `json:"youtube_trailer"`
+	TMDbID         FlexibleID        `json:"tmdb_id"`
+	CategoryID     FlexibleID        `json:"category_id"`
+}
+
+// FlexibleSeriesInfo handles info that may be returned as object, false, or null.
+type FlexibleSeriesInfo struct {
+	SeriesDetails
+}
+
+// UnmarshalJSON implements json.Unmarshaler for FlexibleSeriesInfo.
+func (f *FlexibleSeriesInfo) UnmarshalJSON(data []byte) error {
+	s := string(data)
+	if s == "false" || s == "null" || s == "[]" || s == "{}" {
+		return nil
+	}
+
+	var details SeriesDetails
+	if err := json.Unmarshal(data, &details); err != nil {
+		return nil // Don't fail, just leave empty
+	}
+	f.SeriesDetails = details
+	return nil
+}
+
+// FlexibleStringArr handles arrays that may be returned as single string, array, or false/null.
+type FlexibleStringArr []string
+
+// UnmarshalJSON implements json.Unmarshaler for FlexibleStringArr.
+func (f *FlexibleStringArr) UnmarshalJSON(data []byte) error {
+	s := string(data)
+	if s == "false" || s == "null" || s == "[]" {
+		*f = make(FlexibleStringArr, 0)
+		return nil
+	}
+
+	// Try as array first
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err == nil {
+		*f = arr
+		return nil
+	}
+
+	// Try as single string
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		if single != "" {
+			*f = []string{single}
+		} else {
+			*f = make(FlexibleStringArr, 0)
+		}
+		return nil
+	}
+
+	*f = make(FlexibleStringArr, 0)
+	return nil
 }
 
 // EPGShort represents short EPG (Electronic Program Guide) data.

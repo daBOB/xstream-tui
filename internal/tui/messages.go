@@ -170,3 +170,8 @@ type DownloadCancelMsg struct {
 type DownloadRemoveMsg struct {
 	ID string
 }
+
+// BatchDownloadMsg requests adding multiple downloads to the queue.
+type BatchDownloadMsg struct {
+	Downloads []DownloadRequestMsg
+}

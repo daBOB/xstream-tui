@@ -209,7 +209,7 @@ func (m *EpisodesModel) View() string {
 	b.WriteString(m.list.ScrollInfo())
 
 	// Help text
-	help := tui.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] Play  [d] Download  [/] Search  [D] Queue  [Esc] Back")
+	help := tui.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] Play  [d] Download  [/] Search  [Q] Queue  [Esc] Back")
 	b.WriteString(help)
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())

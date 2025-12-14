@@ -183,7 +183,13 @@ func (m *LoginModel) submit() tea.Cmd {
 	url := "http://" + host + ":" + port
 
 	return func() tea.Msg {
-		client, err := xc.NewClient(url, user, pass)
+		// Check for debug mode via environment variable
+		var opts []xc.ClientOption
+		if debugEnv := os.Getenv("XSTREAM_DEBUG"); debugEnv != "" && debugEnv != "0" && debugEnv != "false" {
+			opts = append(opts, xc.WithDebug(true))
+		}
+
+		client, err := xc.NewClient(url, user, pass, opts...)
 		if err != nil {
 			return tui.AuthErrorMsg{Err: err}
 		}

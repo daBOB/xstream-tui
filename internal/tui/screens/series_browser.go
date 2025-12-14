@@ -4,6 +4,8 @@ package screens
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -58,8 +60,13 @@ func (m *SeriesBrowserModel) SetSeries(series xc.Series) tea.Cmd {
 	m.series = series
 	m.seriesInfo = nil
 	m.allEpisodes = make(map[string][]xc.Episode)
+	m.currentSeason = ""
 	m.loading = true
 	m.splitView.SetActive(components.LeftPane)
+
+	// Clear previous list data to avoid showing stale content
+	m.seasons.SetItems(nil)
+	m.episodes.SetItems(nil)
 
 	return tea.Batch(
 		m.spinner.Tick,
@@ -144,6 +151,14 @@ func (m *SeriesBrowserModel) Update(msg tea.Msg) tea.Cmd {
 			if m.splitView.Active() == components.RightPane {
 				return m.downloadSelectedEpisode()
 			}
+		case "D":
+			// Download all episodes in current season (from either pane)
+			return m.downloadSelectedSeason()
+		case "Q":
+			// Toggle download queue view
+			return func() tea.Msg {
+				return tui.DownloadQueueToggleMsg{}
+			}
 		}
 
 		// Route input to active pane
@@ -172,6 +187,12 @@ func (m *SeriesBrowserModel) populateSeasons() {
 		return
 	}
 
+	// If seasons array is empty but we have episodes, generate seasons from episodes
+	if len(m.seriesInfo.Seasons) == 0 && len(m.seriesInfo.Episodes) > 0 {
+		m.generateSeasonsFromEpisodes()
+		return
+	}
+
 	items := make([]components.FancyListItem, len(m.seriesInfo.Seasons))
 	for i, s := range m.seriesInfo.Seasons {
 		seasonNum := s.SeasonNumber.String()
@@ -179,6 +200,35 @@ func (m *SeriesBrowserModel) populateSeasons() {
 		items[i] = seasonBrowserItem{
 			SeasonInfo:         s,
 			ActualEpisodeCount: actualCount,
+		}
+	}
+	m.seasons.SetItems(items)
+}
+
+// generateSeasonsFromEpisodes creates season entries from episodes when seasons array is empty.
+func (m *SeriesBrowserModel) generateSeasonsFromEpisodes() {
+	// Collect season numbers and sort them
+	seasonNums := make([]string, 0, len(m.seriesInfo.Episodes))
+	for seasonNum := range m.seriesInfo.Episodes {
+		seasonNums = append(seasonNums, seasonNum)
+	}
+	// Sort season numbers numerically
+	sort.Slice(seasonNums, func(i, j int) bool {
+		ni, _ := strconv.Atoi(seasonNums[i])
+		nj, _ := strconv.Atoi(seasonNums[j])
+		return ni < nj
+	})
+
+	items := make([]components.FancyListItem, len(seasonNums))
+	for i, seasonNum := range seasonNums {
+		episodes := m.seriesInfo.Episodes[seasonNum]
+		items[i] = seasonBrowserItem{
+			SeasonInfo: xc.SeasonInfo{
+				SeasonNumber: xc.NewFlexibleIDFromString(seasonNum),
+				Name:         fmt.Sprintf("Season %s", seasonNum),
+				EpisodeCount: xc.NewFlexibleID(len(episodes)),
+			},
+			ActualEpisodeCount: len(episodes),
 		}
 	}
 	m.seasons.SetItems(items)
@@ -259,6 +309,46 @@ func (m *SeriesBrowserModel) downloadSelectedEpisode() tea.Cmd {
 	}
 }
 
+func (m *SeriesBrowserModel) downloadSelectedSeason() tea.Cmd {
+	item := m.seasons.Selected()
+	if item == nil || m.client == nil {
+		return nil
+	}
+
+	seasonItem, ok := item.(seasonBrowserItem)
+	if !ok {
+		return nil
+	}
+
+	seasonNum := seasonItem.SeasonNumber.String()
+	episodes := m.allEpisodes[seasonNum]
+	if len(episodes) == 0 {
+		return nil
+	}
+
+	// Build batch download messages for all episodes
+	var msgs []tui.DownloadRequestMsg
+	for _, ep := range episodes {
+		container := ep.ContainerExt
+		if container == "" {
+			container = "mp4"
+		}
+		url := m.client.SeriesEpisodeURL(ep.ID.String(), container)
+		name := ep.Title + "." + container
+
+		msgs = append(msgs, tui.DownloadRequestMsg{
+			Name:       name,
+			URL:        url,
+			SeriesName: m.series.Name,
+			SeasonName: seasonItem.Name,
+		})
+	}
+
+	return func() tea.Msg {
+		return tui.BatchDownloadMsg{Downloads: msgs}
+	}
+}
+
 // View renders the series browser.
 func (m *SeriesBrowserModel) View() string {
 	var b strings.Builder
@@ -301,7 +391,7 @@ func (m *SeriesBrowserModel) View() string {
 	b.WriteString("\n")
 
 	// Help text
-	help := "[Tab/hl] Switch pane  [↑↓jk] Navigate  [Enter] Select/Play  [d] Download  [D] Queue  [Esc] Back"
+	help := "[Tab/hl] Switch  [↑↓jk] Nav  [Enter] Play  [d] Download  [D] DL Season  [Q] Queue  [Esc] Back"
 	b.WriteString(tui.HelpStyle.Render(help))
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
