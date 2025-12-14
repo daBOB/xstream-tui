@@ -6,7 +6,7 @@ xstream-tui is a Go-based terminal user interface (TUI) for IPTV streaming via X
 
 **Repository:** github.com/altmueller/xstream-tui
 **Go Version:** 1.25.5
-**Status:** Phase 2 (Data Layer) - Complete
+**Status:** ✅ ALL 6 PHASES COMPLETE - v1.0.0 Ready for Release
 
 ## Architecture
 
@@ -52,15 +52,22 @@ xstream-tui/
 │   │   └── client_test.go         # Client + integration tests
 │   ├── tui/                       # Presentation layer
 │   │   ├── app.go                 # Main application model (TEA)
-│   │   ├── screens/               # Screen components (planned)
-│   │   ├── components/            # Reusable UI elements (planned)
-│   │   └── styles.go              # Styling utilities (planned)
+│   │   ├── screens/               # Screen components
+│   │   ├── components/            # Reusable UI elements
+│   │   ├── styles.go              # Lipgloss color/style palette
+│   │   ├── help.go                # Help overlay with keyboard shortcuts
+│   │   ├── errors.go              # Error modal + friendly messages
+│   │   └── messages.go            # Message types
 │   ├── player/                    # Playback layer
-│   │   ├── manager.go             # Process manager (planned)
-│   │   ├── mpv.go                 # mpv integration (planned)
-│   │   └── ipc.go                 # IPC communication (planned)
+│   │   ├── manager.go             # Process manager
+│   │   ├── mpv.go                 # mpv integration
+│   │   ├── vlc.go                 # VLC fallback
+│   │   ├── detect.go              # Player detection (mpv, VLC)
+│   │   ├── ipc.go                 # IPC communication
+│   │   └── socket_test.go         # Socket tests
 │   └── config/                    # Configuration
-│       └── config.go              # Config management (planned)
+│       ├── config.go              # TOML config (servers, player preference)
+│       └── credentials.go         # Secure credential storage (JSON, 0600)
 ├── go.mod                         # Module definition
 ├── go.sum                         # Dependency checksums
 ├── Makefile                       # Build targets
@@ -143,13 +150,60 @@ Implements Bubble Tea's `tea.Model` interface using The Elm Architecture:
 
 **Styling:** Uses lipgloss for terminal styling (color 86 for title, gray for instructions)
 
+### Configuration Layer (`internal/config/`)
+
+**Config** (`config.go`)
+- TOML format for persistent settings
+- XDG_CONFIG_HOME support (~/.config/xstream-tui/config.toml)
+- Server registry: hostname, port, username, player preference
+- Methods: Load(), Save(), AddServer(), GetServer()
+- Secure permissions: 0700 for config directory, 0600 for files
+
+**Credentials** (`credentials.go`)
+- Separate JSON storage (XDG path/credentials.json)
+- Secure permissions: 0600 (owner read/write only)
+- Methods: SaveCredentials(), GetCredentials(), DeleteCredentials()
+- Per-server storage: username + password pairs
+- Production note: consider OS keyring for enhanced security
+
+### Player Detection (`internal/player/detect.go`)
+
+- Cross-platform player detection: mpv, VLC
+- Platform-specific paths:
+  - Linux/BSD: Check PATH for executable
+  - macOS: Check /Applications/VLC.app standard location
+  - Windows: Check Program Files + PATH
+- Availability struct with Detect(), Preferred(), String()
+
+### UI Polish (`internal/tui/`)
+
+**Styles** (`styles.go`)
+- Comprehensive color palette (16 ANSI colors)
+- Pre-defined styles: title, navigation, status bar, modals, input fields
+- StatusBarStyle: dark background (236), light text, padding
+- Tab styles: TabActiveStyle, TabInactiveStyle
+
+**Help Overlay** (`help.go`)
+- HelpModel: toggle visibility, show/hide methods
+- Renders keyboard shortcuts: navigation, search, player controls
+- Centered modal with rounded border (color 62 purple)
+
+**Error Modal** (`errors.go`)
+- FriendlyError(): converts technical errors to user messages
+- ErrorModal: displays errors with word wrapping
+- Responsive width handling for small terminals
+- SetError(), Clear(), IsVisible() methods
+
 ### Dependencies
 
 **Core TUI Stack:**
 - `github.com/charmbracelet/bubbletea` v1.3.10 - TUI framework
-- `github.com/charmbracelet/bubbles` v0.21.0 - UI components (optional)
+- `github.com/charmbracelet/bubbles` v0.21.0 - UI components
 - `github.com/charmbracelet/lipgloss` v1.1.0 - Styling library
 - `github.com/charmbracelet/colorprofile` v0.2.3 - Color support
+
+**Configuration:**
+- `github.com/BurntSushi/toml` v1.5.0 - TOML parsing
 
 **Utilities:**
 - `github.com/joho/godotenv` v1.5.1 - Environment file loading
@@ -211,11 +265,31 @@ make tidy           # Tidy dependencies
 - Unit tests for models (FlexibleID marshaling)
 - Integration tests using httptest mock server
 
-**Next Phases:**
-- Phase 3: Presentation Layer (Screens & components)
-- Phase 4: Playback Layer (mpv integration)
-- Phase 5: Integration & testing
-- Phase 6: Polish & optimization
+**Phase 3: Presentation Layer** ✅ COMPLETE
+- Bubble Tea TUI framework integration
+- Screen components (LoginScreen, ContentTypeScreen, CategoriesScreen, StreamsScreen)
+- State machine with navigation stack
+- Event handling and message dispatching
+
+**Phase 4: Playback Layer** ✅ COMPLETE
+- mpv integration with IPC socket communication
+- VLC fallback player support
+- Process manager for player lifecycle
+- Playback control (play, pause, seek)
+
+**Phase 5: Integration & Testing** ✅ COMPLETE
+- Full app integration with all layers
+- Unit + integration tests
+- Security fixes and error handling
+
+**Phase 6: Polish** ✅ COMPLETE
+- Configuration management (TOML config + credentials storage)
+- Cross-platform player detection (mpv, VLC)
+- Status bar rendering with user info + expiry
+- Help overlay with keyboard shortcuts
+- Error modal with friendly messages
+- Comprehensive style palette
+- Code review passed (production-ready)
 
 ## Key Decisions
 
@@ -223,16 +297,21 @@ make tidy           # Tidy dependencies
 |--------|----------|-----------|
 | Go Version | 1.25.5 (supports 1.21+) | slog availability, generics support |
 | TUI Framework | Bubble Tea | Cross-platform, active maintenance, Elm architecture |
-| Credential Storage | .env file | Simple, secure via .gitignore |
+| Config Format | TOML | Human-readable, standard for CLI apps |
+| Credential Storage | Separate JSON (0600) | Secure permissions, isolated from config |
+| Player Priority | mpv > VLC | mpv is lighter, better maintained |
 | API Protocol | HTTP only | XC API standard (no HTTPS verification) |
-| Cache | Persistent | Session across restarts for UX |
+| UI Styling | Lipgloss + ANSI colors | Framework-provided, consistent theming |
 
 ## Security Considerations
 
-- `.gitignore` prevents accidental credential commits
+- Config/credentials stored in XDG paths (~/.config/xstream-tui/)
+- Secure file permissions: 0600 for sensitive files, 0700 for directories
+- Credentials stored separately from config (JSON file)
 - No hardcoded credentials in code
-- Environment variables via .env loading
+- Environment variables via .env loading (development)
 - Terminal runs in alt screen (separate from shell history)
+- Production recommendation: use OS keyring instead of JSON storage
 
 ## Links
 
@@ -243,6 +322,7 @@ make tidy           # Tidy dependencies
 
 ---
 
-**Last Updated:** 2025-12-14
-**Status:** Phase 2 Complete
-**Author:** Docs Manager
+**Last Updated:** 2025-12-14 23:59
+**Status:** ✅ ALL PHASES COMPLETE - v1.0.0 Ready for Release
+**Author:** Docs Manager & Project Manager
+**Final:** Phase 6 Polish complete with code review, security audit, and production-ready quality verified

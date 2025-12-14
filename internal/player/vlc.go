@@ -63,8 +63,8 @@ func (p *VLCPlayer) Stop() error {
 
 // VLC has no practical IPC - these are no-ops.
 
-func (p *VLCPlayer) Pause() error       { return nil }
-func (p *VLCPlayer) Resume() error      { return nil }
-func (p *VLCPlayer) TogglePause() error { return nil }
-func (p *VLCPlayer) Seek(int) error     { return nil }
+func (p *VLCPlayer) Pause() error        { return nil }
+func (p *VLCPlayer) Resume() error       { return nil }
+func (p *VLCPlayer) TogglePause() error  { return nil }
+func (p *VLCPlayer) Seek(int) error      { return nil }
 func (p *VLCPlayer) SetVolume(int) error { return nil }

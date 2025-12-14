@@ -152,5 +152,19 @@ var (
 			MarginBottom(1)
 )
 
+// Status bar styles.
+var (
+	// StatusBarStyle for the bottom status bar.
+	StatusBarStyle = lipgloss.NewStyle().
+			Background(lipgloss.Color("236")).
+			Foreground(ColorText).
+			Padding(0, 1)
+
+	// StatusBarLabelStyle for labels in the status bar.
+	StatusBarLabelStyle = lipgloss.NewStyle().
+				Foreground(ColorPrimary).
+				Bold(true)
+)
+
 // Spinner frames for loading animation.
 var SpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}

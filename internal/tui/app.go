@@ -4,6 +4,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -349,7 +350,26 @@ func (a *App) View() string {
 		return a.renderWithError(content)
 	}
 
+	// Add status bar when logged in (not on login screen)
+	if a.screen != LoginScreen && a.userInfo.Username != "" {
+		return a.renderWithStatusBar(content)
+	}
+
 	return content
+}
+
+// renderWithStatusBar renders content with a status bar at the bottom.
+func (a *App) renderWithStatusBar(content string) string {
+	statusBar := a.renderStatusBar()
+
+	// Adjust content height to fit status bar
+	contentHeight := a.height - 1
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	content = lipgloss.NewStyle().Height(contentHeight).Render(content)
+
+	return lipgloss.JoinVertical(lipgloss.Left, content, statusBar)
 }
 
 func (a *App) renderScreen() string {
@@ -421,4 +441,44 @@ func (a *App) renderWithError(content string) string {
 	content = lipgloss.NewStyle().Height(contentHeight).Render(content)
 
 	return lipgloss.JoinVertical(lipgloss.Left, content, errorBar)
+}
+
+// renderStatusBar renders the status bar at the bottom of the screen.
+func (a *App) renderStatusBar() string {
+	// Build left side: username and content type
+	var leftParts []string
+
+	if a.userInfo.Username != "" {
+		leftParts = append(leftParts,
+			StatusBarLabelStyle.Render("User: ")+a.userInfo.Username)
+	}
+
+	// Show content type if on categories or streams screen
+	if a.screen == CategoriesScreen || a.screen == StreamsScreen {
+		leftParts = append(leftParts,
+			StatusBarLabelStyle.Render("Type: ")+a.currentType.String())
+	}
+
+	left := strings.Join(leftParts, "  │  ")
+
+	// Build right side: expiration date
+	var right string
+	expDate := a.userInfo.ExpDate.String()
+	if expDate != "" && expDate != "0" {
+		right = StatusBarLabelStyle.Render("Expires: ") + expDate
+	}
+
+	// Calculate padding for right alignment
+	leftLen := lipgloss.Width(left)
+	rightLen := lipgloss.Width(right)
+	availableWidth := a.width - 4 // Account for padding
+
+	padding := availableWidth - leftLen - rightLen
+	if padding < 1 {
+		padding = 1
+	}
+
+	content := left + strings.Repeat(" ", padding) + right
+
+	return StatusBarStyle.Width(a.width).Render(content)
 }
