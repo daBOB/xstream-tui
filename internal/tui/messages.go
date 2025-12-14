@@ -105,3 +105,13 @@ type SpinnerTickMsg struct{}
 
 // NavigateBackMsg requests navigation to the previous screen.
 type NavigateBackMsg struct{}
+
+// PlayerStartedMsg indicates playback has started.
+type PlayerStartedMsg struct {
+	PlayerType string // "mpv" or "vlc"
+}
+
+// PlayerStoppedMsg indicates playback has ended.
+type PlayerStoppedMsg struct {
+	Err error // nil if ended normally
+}

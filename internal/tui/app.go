@@ -3,11 +3,13 @@
 package tui
 
 import (
+	"context"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/altmueller/xstream-tui/internal/player"
 	"github.com/altmueller/xstream-tui/internal/xc"
 )
 
@@ -35,6 +37,11 @@ type App struct {
 	loading      bool
 	loadingMsg   string
 	spinnerFrame int
+
+	// Player
+	player     *player.Manager
+	playerCtx  context.Context
+	playerStop context.CancelFunc
 }
 
 // Screen model interfaces for type assertions.
@@ -73,6 +80,7 @@ type streamsScreen interface {
 func NewApp() *App {
 	return &App{
 		screen: LoginScreen,
+		player: player.NewManager(),
 	}
 }
 
@@ -173,8 +181,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case StreamSelectedMsg:
-		// For now, just show the URL - Phase 4 will add playback
-		a.errorMsg = "Ready to play: " + msg.Name
+		return a, a.startPlayback(msg.URL, msg.Name)
+
+	case PlayerStartedMsg:
+		a.loading = false
+		a.errorMsg = "Playing via " + msg.PlayerType + " - Press 'q' to stop"
+		return a, nil
+
+	case PlayerStoppedMsg:
+		if msg.Err != nil {
+			a.errorMsg = "Playback ended: " + msg.Err.Error()
+		} else {
+			a.errorMsg = ""
+		}
 		return a, nil
 
 	case ErrorMsg:
@@ -287,6 +306,40 @@ func (a *App) spinnerTick() tea.Cmd {
 	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
 		return SpinnerTickMsg{}
 	})
+}
+
+// startPlayback launches the media player.
+func (a *App) startPlayback(url, title string) tea.Cmd {
+	return func() tea.Msg {
+		// Cancel any previous playback context
+		if a.playerStop != nil {
+			a.playerStop()
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		a.playerCtx = ctx
+		a.playerStop = cancel
+
+		// Register exit callback
+		a.player.OnExit(func(err error) {
+			// Note: This runs in a goroutine, cannot send tea.Msg directly
+			// The UI will check IsPlaying() state
+		})
+
+		if err := a.player.Play(ctx, url, title); err != nil {
+			return ErrorMsg{Err: err}
+		}
+
+		return PlayerStartedMsg{PlayerType: string(a.player.Type())}
+	}
+}
+
+// StopPlayback stops current playback (call from main on quit).
+func (a *App) StopPlayback() {
+	if a.playerStop != nil {
+		a.playerStop()
+	}
+	a.player.Stop()
 }
 
 // View renders the current application state.
