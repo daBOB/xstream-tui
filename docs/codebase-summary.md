@@ -6,7 +6,7 @@ xstream-tui is a Go-based terminal user interface (TUI) for IPTV streaming via X
 
 **Repository:** github.com/altmueller/xstream-tui
 **Go Version:** 1.25.5
-**Status:** Phase 1 (Project Setup) - Complete
+**Status:** Phase 2 (Data Layer) - Complete
 
 ## Architecture
 
@@ -45,9 +45,11 @@ xstream-tui/
 │       └── main.go                # Entry point
 ├── internal/
 │   ├── xc/                        # Data layer (Xtream Codes)
-│   │   ├── client.go              # API client (planned)
-│   │   ├── models.go              # Data models (planned)
-│   │   └── endpoints.go           # Endpoint mappings (planned)
+│   │   ├── client.go              # HTTP client with validation
+│   │   ├── models.go              # Data models & FlexibleID type
+│   │   ├── endpoints.go           # 12 API endpoints
+│   │   ├── models_test.go         # Model unit tests
+│   │   └── client_test.go         # Client + integration tests
 │   ├── tui/                       # Presentation layer
 │   │   ├── app.go                 # Main application model (TEA)
 │   │   ├── screens/               # Screen components (planned)
@@ -63,7 +65,7 @@ xstream-tui/
 ├── go.sum                         # Dependency checksums
 ├── Makefile                       # Build targets
 ├── .gitignore                     # Git exclusions
-└── docs/                          # Documentation (in progress)
+└── docs/                          # Documentation
 ```
 
 ## Core Components
@@ -82,6 +84,46 @@ if _, err := p.Run(); err != nil {
     os.Exit(1)
 }
 ```
+
+### Data Layer (`internal/xc/`)
+
+**Client** (`client.go`)
+- HTTP client for Xtream Codes API with validation
+- Credentials injected via URL path/query (API requirement)
+- Configurable timeout and custom HTTP client support
+- Error handling with size limits (maxErrorBodySize = 4096)
+- Security documentation: credentials in URLs, use HTTPS when available, store securely
+
+**Models** (`models.go`)
+- `FlexibleID`: Handles IDs as int or string (provider inconsistency)
+  - Methods: `String()`, `Int()`, `IsZero()`, `NewFlexibleID()`, `NewFlexibleIDFromString()`
+  - Implements `json.Marshaler` and `json.Unmarshaler`
+- `UserInfo`: Account info (username, status, active connections, expiry)
+- `ServerInfo`: XC server metadata (URL, ports, protocol, timezone)
+- `AuthResponse`: Authentication result (user + server info)
+- `Category`: Content category (ID, name, parent ID)
+- `LiveStream`: Live TV channel (ID, name, icon, category, EPG channel ID, archive)
+- `VODStream`: Video-on-demand item (ID, name, rating, container, direct source)
+- `Series`: TV series (ID, name, cover, added date)
+- `SeriesInfo`: Detailed series with episodes
+- `Episode`: Individual season/episode
+- `EPGShort`: Current + next program
+- `EPGEntry`: EPG listing with start time and duration
+
+**Endpoints** (`endpoints.go`) - 12 methods
+- `Authenticate(ctx)`: Verify credentials, validate account status
+- `GetLiveCategories(ctx)`, `GetVODCategories(ctx)`, `GetSeriesCategories(ctx)`: Category listings
+- `GetLiveStreams(ctx, categoryID)`, `GetVODStreams(ctx, categoryID)`, `GetSeries(ctx, categoryID)`: Stream listings
+- `GetSeriesInfo(ctx, seriesID)`: Series details with episodes
+- `GetVODInfo(ctx, vodID)`: VOD item details
+- `GetShortEPG(ctx, streamID)`: Current/next program
+- `GetSimpleDataTable(ctx, streamID)`: EPG entries for date range
+- `GetAllLiveStreams(ctx)`, `GetAllVODStreams(ctx)`, `GetAllSeries(ctx)`: Unfiltered listings
+
+**Tests** (`models_test.go`, `client_test.go`)
+- Unit tests for FlexibleID marshaling/unmarshaling
+- Client initialization and validation tests
+- Integration tests using httptest mock server
 
 ### TUI Model (`internal/tui/app.go`)
 
@@ -161,8 +203,15 @@ make tidy           # Tidy dependencies
 - Build targets operational
 - Code review passed
 
+**Phase 2: Data Layer** ✅ COMPLETE
+- FlexibleID type for int/string JSON handling
+- Complete data models (UserInfo, ServerInfo, Category, LiveStream, VODStream, Series, SeriesInfo, Episode, EPG)
+- HTTP client with validation and error handling
+- 12 API endpoints implemented (Authenticate, GetLiveCategories, GetVODCategories, GetSeriesCategories, GetLiveStreams, GetVODStreams, GetSeries, GetSeriesInfo, GetVODInfo, GetShortEPG, GetSimpleDataTable, GetAllStreams)
+- Unit tests for models (FlexibleID marshaling)
+- Integration tests using httptest mock server
+
 **Next Phases:**
-- Phase 2: Data Layer (XC Client implementation)
 - Phase 3: Presentation Layer (Screens & components)
 - Phase 4: Playback Layer (mpv integration)
 - Phase 5: Integration & testing
@@ -195,5 +244,5 @@ make tidy           # Tidy dependencies
 ---
 
 **Last Updated:** 2025-12-14
-**Status:** Phase 1 Complete
+**Status:** Phase 2 Complete
 **Author:** Docs Manager
