@@ -5,14 +5,20 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/joho/godotenv"
 
+	"github.com/altmueller/xstream-tui/internal/download"
 	"github.com/altmueller/xstream-tui/internal/tui"
 	"github.com/altmueller/xstream-tui/internal/tui/screens"
 )
 
 func main() {
+	// Load .env file if present (ignore errors if not found)
+	_ = godotenv.Load()
+
 	// Create and configure the application
 	app := tui.NewApp()
 
@@ -21,15 +27,27 @@ func main() {
 	contentType := screens.NewContentTypeModel()
 	categories := screens.NewCategoriesModel()
 	streams := screens.NewStreamsModel()
+	seasons := screens.NewSeasonsModel()
+	episodes := screens.NewEpisodesModel()
 
 	// Inject screens into app
 	app.SetLoginScreen(login)
 	app.SetContentTypeScreen(contentType)
 	app.SetCategoriesScreen(categories)
 	app.SetStreamsScreen(streams)
+	app.SetSeasonsScreen(seasons)
+	app.SetEpisodesScreen(episodes)
+
+	// Initialize download manager
+	downloadDir := getDownloadDir()
+	downloader := download.NewManager(downloadDir)
+	app.SetDownloader(downloader)
 
 	// Create Bubble Tea program with alternate screen buffer
 	p := tea.NewProgram(app, tea.WithAltScreen())
+
+	// Set program reference for download progress callbacks
+	app.SetProgram(p)
 
 	// Run the program
 	if _, err := p.Run(); err != nil {
@@ -39,4 +57,19 @@ func main() {
 
 	// Cleanup player on exit
 	app.StopPlayback()
+}
+
+// getDownloadDir returns the default download directory.
+func getDownloadDir() string {
+	// Check environment variable first
+	if dir := os.Getenv("XSTREAM_DOWNLOAD_DIR"); dir != "" {
+		return dir
+	}
+
+	// Use ~/Downloads/xstream-tui as default
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "./downloads"
+	}
+	return filepath.Join(home, "Downloads", "xstream-tui")
 }

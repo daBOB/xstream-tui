@@ -2,7 +2,7 @@
 
 ## Architecture Overview
 
-xstream-tui implements a three-layer architecture with clean separation of concerns:
+xstream-tui implements a four-layer architecture with clean separation of concerns:
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -14,6 +14,11 @@ xstream-tui implements a three-layer architecture with clean separation of conce
 │  │  Screen   │  │  Screen  │  │ Screen │  │  (Playback)    │ │
 │  └───────────┘  └──────────┘  └────────┘  └────────────────┘ │
 │                                                                │
+│  Download Queue Overlay (toggled with 'D')                    │
+│  ┌──────────────────────────────────────────┐                │
+│  │ Downloads: Progress, Cancel, Remove      │                │
+│  └──────────────────────────────────────────┘                │
+│                                                                │
 │            State Machine (App struct) at center               │
 └────────────────┬──────────────┬────────────────┬──────────────┘
                  │              │                │
@@ -24,6 +29,10 @@ xstream-tui implements a three-layer architecture with clean separation of conce
                         ┌───────▼──────────────┐ │
                         │  Playback Layer      │ │
                         │  (mpv/VLC)           │ │
+                        └──────────────────────┘ │
+                        ┌───────▼──────────────┐ │
+                        │ Download Layer       │ │
+                        │ (Queue Manager)      │ │
                         └──────────────────────┘ │
                                         ┌────────▼──────┐
                                         │ Styling &     │
@@ -217,7 +226,58 @@ Lightweight fallback when mpv unavailable:
 - No runtime control (pause/seek/volume no-ops)
 - Platform-specific executable paths
 
-### 4. Configuration Layer
+### 4. Download Layer
+
+**Location:** `internal/download/`
+
+**Responsibility:** Queue-based file downloads with progress tracking and cancellation.
+
+**Components:**
+
+#### Download Manager (`internal/download/manager.go`)
+- Single-threaded queue processor (one concurrent download)
+- FIFO queue with status tracking
+- Item struct: ID, Name, URL, FilePath, Status, Progress, Size, Downloaded, Error
+
+```go
+type Manager struct {
+    queue       []*Item
+    downloadDir string
+    httpClient  *http.Client
+    onProgress  func(ProgressUpdate)
+    nextID      int
+    isProcessing bool  // Prevents concurrent queue processing
+}
+
+// Key methods
+func (m *Manager) Add(name, urlStr string) string       // Returns ID
+func (m *Manager) Cancel(id string) bool                // Cancels active download
+func (m *Manager) Remove(id string) bool                // Removes completed item
+func (m *Manager) Queue() []Item                        // Returns current queue
+func (m *Manager) ActiveDownload() *Item                // Current download
+func (m *Manager) SetProgressCallback(cb func(...))     // Register progress handler
+```
+
+**Features:**
+- 32KB buffered file writes for efficiency
+- Temp file handling (.tmp suffix) with atomic rename on completion
+- HTTP context cancellation for graceful stopping
+- Progress updates on every chunk received
+- Status lifecycle: Queued → Downloading → Completed/Failed/Cancelled
+
+**Download Directory:**
+- Default: ~/Downloads/xstream-tui/
+- Override via XSTREAM_DOWNLOAD_DIR environment variable
+- Auto-creates directory with 0755 permissions
+
+#### Queue Component Integration (`internal/tui/components/download_queue.go`)
+- Overlay panel displaying active downloads
+- Keyboard navigation: `j`/`k` or arrow keys to select
+- Action keys: `d` (cancel), `x` (remove), `Esc` (close)
+- Visual feedback: Progress bars, status icons, percentage display
+- Auto-hides when queue is empty
+
+### 5. Configuration Layer
 
 **Location:** `internal/config/`
 
@@ -390,6 +450,31 @@ type PlayerStartedMsg struct {
 
 type PlayerStoppedMsg struct {
     Err error // nil if ended normally
+}
+
+// Download layer messages
+type DownloadRequestMsg struct {
+    Name string  // Display name
+    URL  string  // Download URL
+}
+
+type DownloadProgressMsg struct {
+    ID         string
+    Progress   float64
+    Downloaded int64
+    Size       int64
+    Status     download.Status
+    Error      error
+}
+
+type DownloadQueueToggleMsg struct{} // Toggle queue visibility with 'D'
+
+type DownloadCancelMsg struct {
+    ID string  // Download ID to cancel
+}
+
+type DownloadRemoveMsg struct {
+    ID string  // Download ID to remove
 }
 ```
 
@@ -919,8 +1004,8 @@ API Error (network, auth, etc)
 
 ---
 
-**Document Version:** 1.2
+**Document Version:** 1.3
 **Last Updated:** 2025-12-14
-**Phases Complete:** Phase 1 (TUI) + Phase 2 (Data Layer) + Phase 3 (API Client) + Phase 4 (Playback Layer) + Phase 5 (Integration)
-**Status:** Full integration with auth, navigation, async loading, and playback
-**Integration Tests:** 11 new tests covering message flow and state transitions
+**Phases Complete:** Phases 1-7 (Project Setup, Data Layer, Presentation, Playback, Integration, Polish, Download Queue)
+**Status:** Four-layer architecture with auth, navigation, playback, and download queue features
+**Latest Feature:** Download manager with single-threaded queue, progress tracking, and UI integration

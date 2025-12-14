@@ -80,6 +80,43 @@ func NewFlexibleIDFromString(id string) FlexibleID {
 	return FlexibleID{stringVal: id, isInt: false}
 }
 
+// FlexibleFloat handles floats that may be returned as either float or string.
+// XC providers often return ratings as strings like "4.5" instead of 4.5.
+type FlexibleFloat float64
+
+// UnmarshalJSON implements json.Unmarshaler for FlexibleFloat.
+func (f *FlexibleFloat) UnmarshalJSON(data []byte) error {
+	// Try float first
+	var fl float64
+	if err := json.Unmarshal(data, &fl); err == nil {
+		*f = FlexibleFloat(fl)
+		return nil
+	}
+
+	// Try string
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		if s == "" {
+			*f = 0
+			return nil
+		}
+		val, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			*f = 0
+			return nil // Don't fail on unparseable strings
+		}
+		*f = FlexibleFloat(val)
+		return nil
+	}
+
+	return fmt.Errorf("FlexibleFloat: cannot unmarshal %s", string(data))
+}
+
+// Float64 returns the value as float64.
+func (f FlexibleFloat) Float64() float64 {
+	return float64(f)
+}
+
 // UserInfo represents authenticated user account information.
 type UserInfo struct {
 	Username       string     `json:"username"`
@@ -141,7 +178,7 @@ type VODStream struct {
 	Container    string     `json:"container_extension"`
 	Added        FlexibleID `json:"added"`
 	Rating       string     `json:"rating"`
-	Rating5Based float64    `json:"rating_5based"`
+	Rating5Based FlexibleFloat `json:"rating_5based"`
 	DirectSource string     `json:"direct_source"`
 }
 
@@ -157,7 +194,7 @@ type Series struct {
 	Genre        string     `json:"genre"`
 	ReleaseDate  string     `json:"releaseDate"`
 	Rating       string     `json:"rating"`
-	Rating5Based float64    `json:"rating_5based"`
+	Rating5Based FlexibleFloat `json:"rating_5based"`
 	CategoryID   FlexibleID `json:"category_id"`
 }
 
@@ -171,11 +208,11 @@ type SeriesInfo struct {
 // SeasonInfo represents a season within a series.
 type SeasonInfo struct {
 	AirDate      string     `json:"air_date"`
-	EpisodeCount int        `json:"episode_count"`
+	EpisodeCount FlexibleID `json:"episode_count"`
 	ID           FlexibleID `json:"id"`
 	Name         string     `json:"name"`
 	Overview     string     `json:"overview"`
-	SeasonNumber int        `json:"season_number"`
+	SeasonNumber FlexibleID `json:"season_number"`
 	Cover        string     `json:"cover"`
 }
 
@@ -195,7 +232,7 @@ type Episode struct {
 type EpisodeInfo struct {
 	Plot       string     `json:"plot"`
 	Duration   string     `json:"duration"`
-	Rating     string     `json:"rating"`
+	Rating     FlexibleID `json:"rating"`
 	MovieImage string     `json:"movie_image"`
 	Bitrate    FlexibleID `json:"bitrate"`
 }
@@ -211,7 +248,7 @@ type SeriesDetails struct {
 	ReleaseDate    string     `json:"releaseDate"`
 	LastModified   FlexibleID `json:"last_modified"`
 	Rating         string     `json:"rating"`
-	Rating5Based   float64    `json:"rating_5based"`
+	Rating5Based   FlexibleFloat `json:"rating_5based"`
 	BackdropPath   []string   `json:"backdrop_path"`
 	YoutubeTrailer string     `json:"youtube_trailer"`
 	TMDbID         FlexibleID `json:"tmdb_id"`

@@ -432,7 +432,7 @@ func TestClient_GetSeriesInfo(t *testing.T) {
 				Name: "The Office",
 			},
 			Seasons: []SeasonInfo{
-				{SeasonNumber: 1, EpisodeCount: 6},
+				{SeasonNumber: NewFlexibleID(1), EpisodeCount: NewFlexibleID(6)},
 			},
 		}
 		json.NewEncoder(w).Encode(info)

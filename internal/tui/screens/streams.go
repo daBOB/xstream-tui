@@ -193,6 +193,8 @@ func (m *StreamsModel) Update(msg tea.Msg) tea.Cmd {
 			return m.search.Focus()
 		case "enter":
 			return m.selectStream()
+		case "d":
+			return m.downloadStream()
 		}
 	}
 
@@ -207,32 +209,51 @@ func (m *StreamsModel) selectStream() tea.Cmd {
 		return nil
 	}
 
-	var url, name string
-
 	switch v := item.(type) {
 	case LiveStreamItem:
-		url = m.client.LiveStreamURL(v.ID.String())
-		name = v.Name
+		url := m.client.LiveStreamURL(v.ID.String())
+		return func() tea.Msg {
+			return tui.StreamSelectedMsg{URL: url, Name: v.Name}
+		}
 	case VODStreamItem:
 		container := v.Container
 		if container == "" {
 			container = "mp4"
 		}
-		url = m.client.VODStreamURL(v.ID.String(), container)
-		name = v.Name
+		url := m.client.VODStreamURL(v.ID.String(), container)
+		return func() tea.Msg {
+			return tui.StreamSelectedMsg{URL: url, Name: v.Name}
+		}
 	case SeriesItem:
-		// For series, we'd need episode selection - for now just show info
-		name = v.Name
-		// TODO: Navigate to episode selection
+		return func() tea.Msg {
+			return tui.SeriesSelectedMsg{Series: v.Series}
+		}
 	}
 
-	if url == "" {
+	return nil
+}
+
+func (m *StreamsModel) downloadStream() tea.Cmd {
+	item := m.list.Selected()
+	if item == nil {
 		return nil
 	}
 
-	return func() tea.Msg {
-		return tui.StreamSelectedMsg{URL: url, Name: name}
+	// Only VOD content can be downloaded
+	switch v := item.(type) {
+	case VODStreamItem:
+		container := v.Container
+		if container == "" {
+			container = "mp4"
+		}
+		url := m.client.VODStreamURL(v.ID.String(), container)
+		name := v.Name + "." + container
+		return func() tea.Msg {
+			return tui.DownloadRequestMsg{Name: name, URL: url}
+		}
 	}
+
+	return nil
 }
 
 // View renders the streams screen.
@@ -269,7 +290,7 @@ func (m *StreamsModel) View() string {
 	b.WriteString(m.list.ScrollInfo())
 
 	// Help text
-	help := tui.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] Play  [/] Search  [Esc] Back")
+	help := tui.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] Play  [d] Download  [/] Search  [D] Queue  [Esc] Back")
 	b.WriteString(help)
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())

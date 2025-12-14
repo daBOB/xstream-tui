@@ -10,7 +10,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/altmueller/xstream-tui/internal/download"
 	"github.com/altmueller/xstream-tui/internal/player"
+	"github.com/altmueller/xstream-tui/internal/tui/components"
 	"github.com/altmueller/xstream-tui/internal/xc"
 )
 
@@ -28,6 +30,13 @@ type App struct {
 	contentType interface{}
 	categories  interface{}
 	streams     interface{}
+	seasons     interface{}
+	episodes    interface{}
+
+	// Current series for episodes screen
+	currentSeries         xc.Series
+	currentSeason         xc.SeasonInfo
+	currentSeasonEpisodes []xc.Episode
 
 	// Shared state
 	client       *xc.Client
@@ -42,6 +51,11 @@ type App struct {
 	// Player
 	player     *player.Manager
 	playerStop context.CancelFunc
+
+	// Downloader
+	downloader    *download.Manager
+	downloadQueue *components.DownloadQueue
+	program       *tea.Program // needed for progress callbacks
 }
 
 // Screen model interfaces for type assertions.
@@ -76,12 +90,52 @@ type streamsScreen interface {
 	View() string
 }
 
+type seasonsScreen interface {
+	SetClient(client *xc.Client)
+	SetSeries(series xc.Series) tea.Cmd
+	SetSize(width, height int)
+	Update(tea.Msg) tea.Cmd
+	View() string
+}
+
+type episodesScreen interface {
+	SetClient(client *xc.Client)
+	SetSeason(season xc.SeasonInfo, episodes []xc.Episode)
+	SetSize(width, height int)
+	Update(tea.Msg) tea.Cmd
+	View() string
+}
+
 // NewApp creates a new application instance.
 func NewApp() *App {
 	return &App{
-		screen: LoginScreen,
-		player: player.NewManager(),
+		screen:        LoginScreen,
+		player:        player.NewManager(),
+		downloadQueue: components.NewDownloadQueue(),
 	}
+}
+
+// SetDownloader sets the download manager.
+func (a *App) SetDownloader(dm *download.Manager) {
+	a.downloader = dm
+	// Set progress callback to send messages to TUI
+	dm.SetProgressCallback(func(update download.ProgressUpdate) {
+		if a.program != nil {
+			a.program.Send(DownloadProgressMsg{
+				ID:         update.ID,
+				Progress:   update.Progress,
+				Downloaded: update.Downloaded,
+				Size:       update.Size,
+				Status:     update.Status.String(),
+				Error:      update.Error,
+			})
+		}
+	})
+}
+
+// SetProgram sets the tea.Program for sending messages.
+func (a *App) SetProgram(p *tea.Program) {
+	a.program = p
 }
 
 // SetLoginScreen injects the login screen model.
@@ -102,6 +156,16 @@ func (a *App) SetCategoriesScreen(m interface{}) {
 // SetStreamsScreen injects the streams screen model.
 func (a *App) SetStreamsScreen(m interface{}) {
 	a.streams = m
+}
+
+// SetSeasonsScreen injects the seasons screen model.
+func (a *App) SetSeasonsScreen(m interface{}) {
+	a.seasons = m
+}
+
+// SetEpisodesScreen injects the episodes screen model.
+func (a *App) SetEpisodesScreen(m interface{}) {
+	a.episodes = m
 }
 
 // Init initializes the application.
@@ -126,6 +190,40 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			return a, tea.Quit
 		}
+
+		// Handle download queue overlay
+		if a.downloadQueue.Visible() {
+			switch msg.String() {
+			case "esc":
+				a.downloadQueue.Hide()
+				return a, nil
+			case "d":
+				if id := a.downloadQueue.SelectedID(); id != "" && a.downloader != nil {
+					a.downloader.Cancel(id)
+					a.downloadQueue.SetItems(a.downloader.Queue())
+				}
+				return a, nil
+			case "x":
+				if id := a.downloadQueue.SelectedID(); id != "" && a.downloader != nil {
+					a.downloader.Remove(id)
+					a.downloadQueue.SetItems(a.downloader.Queue())
+				}
+				return a, nil
+			default:
+				a.downloadQueue.Update(msg)
+				return a, nil
+			}
+		}
+
+		// Toggle download queue with 'D'
+		if msg.String() == "D" && a.screen != LoginScreen {
+			a.downloadQueue.Toggle()
+			if a.downloadQueue.Visible() && a.downloader != nil {
+				a.downloadQueue.SetItems(a.downloader.Queue())
+			}
+			return a, nil
+		}
+
 		// Global back navigation (except on login)
 		if msg.String() == "esc" && a.screen != LoginScreen {
 			if a.errorMsg != "" {
@@ -183,6 +281,32 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StreamSelectedMsg:
 		return a, a.startPlayback(msg.URL, msg.Name)
 
+	case SeriesSelectedMsg:
+		a.currentSeries = msg.Series
+		a.loading = true
+		a.loadingMsg = "Loading series info..."
+		return a.navigateTo(SeasonsScreen)
+
+	case SeriesInfoLoadedMsg:
+		a.loading = false
+		if s, ok := a.seasons.(seasonsScreen); ok {
+			return a, s.Update(msg)
+		}
+		return a, nil
+
+	case SeasonSelectedMsg:
+		a.currentSeason = msg.Season
+		a.currentSeasonEpisodes = msg.Episodes
+		return a.navigateTo(EpisodesScreen)
+
+	case EpisodeSelectedMsg:
+		container := msg.Episode.ContainerExt
+		if container == "" {
+			container = "mp4"
+		}
+		url := a.client.SeriesEpisodeURL(msg.Episode.ID.String(), container)
+		return a, a.startPlayback(url, msg.Episode.Title)
+
 	case PlayerStartedMsg:
 		a.loading = false
 		a.errorMsg = "Playing via " + msg.PlayerType + " - Press 'q' to stop"
@@ -216,6 +340,19 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, a.spinnerTick()
 		}
 		return a, nil
+
+	case DownloadRequestMsg:
+		if a.downloader != nil {
+			a.downloader.Add(msg.Name, msg.URL)
+			a.errorMsg = "Added to download queue - Press 'D' to view"
+		}
+		return a, nil
+
+	case DownloadProgressMsg:
+		if a.downloader != nil {
+			a.downloadQueue.SetItems(a.downloader.Queue())
+		}
+		return a, nil
 	}
 
 	// Forward to current screen
@@ -233,6 +370,12 @@ func (a *App) updateScreenSizes() {
 		s.SetSize(a.width, a.height)
 	}
 	if s, ok := a.streams.(streamsScreen); ok {
+		s.SetSize(a.width, a.height)
+	}
+	if s, ok := a.seasons.(seasonsScreen); ok {
+		s.SetSize(a.width, a.height)
+	}
+	if s, ok := a.episodes.(episodesScreen); ok {
 		s.SetSize(a.width, a.height)
 	}
 }
@@ -255,6 +398,14 @@ func (a *App) updateScreen(msg tea.Msg) (*App, tea.Cmd) {
 		}
 	case StreamsScreen:
 		if s, ok := a.streams.(streamsScreen); ok {
+			cmd = s.Update(msg)
+		}
+	case SeasonsScreen:
+		if s, ok := a.seasons.(seasonsScreen); ok {
+			cmd = s.Update(msg)
+		}
+	case EpisodesScreen:
+		if s, ok := a.episodes.(episodesScreen); ok {
 			cmd = s.Update(msg)
 		}
 	}
@@ -282,6 +433,16 @@ func (a *App) navigateTo(screen Screen) (*App, tea.Cmd) {
 		if s, ok := a.streams.(streamsScreen); ok {
 			s.SetClient(a.client)
 			cmd = s.SetCategory(a.currentCat, a.currentType)
+		}
+	case SeasonsScreen:
+		if s, ok := a.seasons.(seasonsScreen); ok {
+			s.SetClient(a.client)
+			cmd = s.SetSeries(a.currentSeries)
+		}
+	case EpisodesScreen:
+		if s, ok := a.episodes.(episodesScreen); ok {
+			s.SetClient(a.client)
+			s.SetSeason(a.currentSeason, a.currentSeasonEpisodes)
 		}
 	}
 
@@ -347,15 +508,36 @@ func (a *App) View() string {
 	// Error overlay (if error msg exists, show it over current screen)
 	content := a.renderScreen()
 	if a.errorMsg != "" {
-		return a.renderWithError(content)
+		content = a.renderWithError(content)
+	} else if a.screen != LoginScreen && a.userInfo.Username != "" {
+		// Add status bar when logged in (not on login screen)
+		content = a.renderWithStatusBar(content)
 	}
 
-	// Add status bar when logged in (not on login screen)
-	if a.screen != LoginScreen && a.userInfo.Username != "" {
-		return a.renderWithStatusBar(content)
+	// Download queue overlay
+	if a.downloadQueue.Visible() {
+		content = a.renderWithDownloadQueue(content)
 	}
 
 	return content
+}
+
+// renderWithDownloadQueue renders content with download queue overlay.
+func (a *App) renderWithDownloadQueue(content string) string {
+	a.downloadQueue.SetSize(a.width, a.height)
+	queueView := a.downloadQueue.View()
+	if queueView == "" {
+		return content
+	}
+
+	// Position queue panel on the right side using Place
+	overlay := lipgloss.Place(
+		a.width, a.height,
+		lipgloss.Right, lipgloss.Top,
+		queueView,
+	)
+
+	return overlay
 }
 
 // renderWithStatusBar renders content with a status bar at the bottom.
@@ -388,6 +570,14 @@ func (a *App) renderScreen() string {
 		}
 	case StreamsScreen:
 		if s, ok := a.streams.(streamsScreen); ok {
+			return s.View()
+		}
+	case SeasonsScreen:
+		if s, ok := a.seasons.(seasonsScreen); ok {
+			return s.View()
+		}
+	case EpisodesScreen:
+		if s, ok := a.episodes.(episodesScreen); ok {
 			return s.View()
 		}
 	}

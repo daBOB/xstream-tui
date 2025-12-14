@@ -53,18 +53,32 @@ xstream-tui/
 │   ├── tui/                       # Presentation layer
 │   │   ├── app.go                 # Main application model (TEA)
 │   │   ├── screens/               # Screen components
+│   │   │   ├── login.go           # Login screen
+│   │   │   ├── content_type.go    # Content type selector
+│   │   │   ├── categories.go      # Category browsing
+│   │   │   ├── streams.go         # Stream/VOD listing with download
+│   │   │   ├── episodes.go        # Episode selection for series
+│   │   │   └── seasons.go         # Season selection for series
 │   │   ├── components/            # Reusable UI elements
+│   │   │   ├── list.go            # Virtualized list rendering
+│   │   │   └── download_queue.go  # Download queue overlay panel
 │   │   ├── styles.go              # Lipgloss color/style palette
 │   │   ├── help.go                # Help overlay with keyboard shortcuts
 │   │   ├── errors.go              # Error modal + friendly messages
-│   │   └── messages.go            # Message types
+│   │   ├── messages.go            # Message types (including download)
+│   │   └── app_test.go            # Application tests
 │   ├── player/                    # Playback layer
 │   │   ├── manager.go             # Process manager
 │   │   ├── mpv.go                 # mpv integration
 │   │   ├── vlc.go                 # VLC fallback
 │   │   ├── detect.go              # Player detection (mpv, VLC)
 │   │   ├── ipc.go                 # IPC communication
+│   │   ├── socket.go              # Socket management
+│   │   ├── manager_test.go        # Player manager tests
 │   │   └── socket_test.go         # Socket tests
+│   ├── download/                  # Download manager (NEW)
+│   │   ├── manager.go             # Queue-based download manager
+│   │   └── manager_test.go        # Download manager tests
 │   └── config/                    # Configuration
 │       ├── config.go              # TOML config (servers, player preference)
 │       └── credentials.go         # Secure credential storage (JSON, 0600)
@@ -165,6 +179,41 @@ Implements Bubble Tea's `tea.Model` interface using The Elm Architecture:
 - Methods: SaveCredentials(), GetCredentials(), DeleteCredentials()
 - Per-server storage: username + password pairs
 - Production note: consider OS keyring for enhanced security
+
+### Download Manager (`internal/download/`)
+
+**Manager** (`manager.go`)
+- Queue-based download system with single concurrent download
+- File download to user-specified directory (default: ~/Downloads/xstream-tui/)
+- Environment variable override: XSTREAM_DOWNLOAD_DIR
+- Queue operations: Add, Cancel, Remove
+- Progress tracking and status updates
+
+**Key Features:**
+- Item struct: ID, Name, URL, FilePath, Status, Progress (0.0-1.0), Size, Downloaded
+- Status enum: Queued, Downloading, Completed, Failed, Cancelled
+- 32KB buffered file writes for efficiency
+- Temp file handling (.tmp suffix) with atomic rename on completion
+- Progress callback mechanism for real-time UI updates
+- Automatic directory creation with 0755 permissions
+- HTTP context cancellation support
+
+**Tests** (`manager_test.go`)
+- Queue add/remove operations
+- Progress tracking and updates
+- Cancel during download
+- Error handling (network, invalid URL)
+- File creation and cleanup
+
+### Download Queue Component (`internal/tui/components/download_queue.go`)
+
+- Overlay panel for monitoring active downloads
+- Keyboard navigation: `j`/`k` or arrow keys
+- Action keys: `d` cancel, `x` remove, `Esc` close
+- Visual progress bars with percentage
+- Status icons: ⏳ queued, ⬇ downloading, ✓ completed, ✗ failed, ⊘ cancelled
+- Responsive panel sizing (60 char default, adapts to terminal)
+- Selection highlight (purple background)
 
 ### Player Detection (`internal/player/detect.go`)
 
@@ -267,7 +316,7 @@ make tidy           # Tidy dependencies
 
 **Phase 3: Presentation Layer** ✅ COMPLETE
 - Bubble Tea TUI framework integration
-- Screen components (LoginScreen, ContentTypeScreen, CategoriesScreen, StreamsScreen)
+- Screen components (LoginScreen, ContentTypeScreen, CategoriesScreen, StreamsScreen, EpisodesScreen, SeasonsScreen)
 - State machine with navigation stack
 - Event handling and message dispatching
 
@@ -291,6 +340,16 @@ make tidy           # Tidy dependencies
 - Comprehensive style palette
 - Code review passed (production-ready)
 
+**Phase 7: Download Queue Feature** ✅ COMPLETE
+- Queue-based download manager (single concurrent download)
+- Download functionality for VOD/episodes (press `d`)
+- Download queue overlay panel (press `D`)
+- Progress tracking and cancellation support
+- Remove completed downloads from queue
+- Configurable download directory (env var: XSTREAM_DOWNLOAD_DIR)
+- Queue component with keyboard navigation and visual feedback
+- Download message types integrated with TUI event system
+
 ## Key Decisions
 
 | Aspect | Decision | Rationale |
@@ -302,6 +361,9 @@ make tidy           # Tidy dependencies
 | Player Priority | mpv > VLC | mpv is lighter, better maintained |
 | API Protocol | HTTP only | XC API standard (no HTTPS verification) |
 | UI Styling | Lipgloss + ANSI colors | Framework-provided, consistent theming |
+| Download Queue | Single concurrent | Prevents bandwidth/resource contention, simpler implementation |
+| Download Directory | ~/Downloads/xstream-tui | Standard location, XSTREAM_DOWNLOAD_DIR override |
+| Temp File Pattern | .tmp suffix + atomic rename | Safe from corruption if process crashes |
 
 ## Security Considerations
 
@@ -322,7 +384,7 @@ make tidy           # Tidy dependencies
 
 ---
 
-**Last Updated:** 2025-12-14 23:59
-**Status:** ✅ ALL PHASES COMPLETE - v1.0.0 Ready for Release
+**Last Updated:** 2025-12-14
+**Status:** ✅ PHASES 1-7 COMPLETE - Download Queue Feature Integrated
 **Author:** Docs Manager & Project Manager
-**Final:** Phase 6 Polish complete with code review, security audit, and production-ready quality verified
+**Latest:** Phase 7 Download Queue complete - queue-based download system with progress tracking and UI integration

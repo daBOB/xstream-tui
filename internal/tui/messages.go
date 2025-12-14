@@ -12,6 +12,8 @@ const (
 	ContentTypeScreen
 	CategoriesScreen
 	StreamsScreen
+	SeasonsScreen
+	EpisodesScreen
 	PlayerScreen
 )
 
@@ -114,4 +116,54 @@ type PlayerStartedMsg struct {
 // PlayerStoppedMsg indicates playback has ended.
 type PlayerStoppedMsg struct {
 	Err error // nil if ended normally
+}
+
+// SeriesSelectedMsg indicates a series was chosen.
+type SeriesSelectedMsg struct {
+	Series xc.Series
+}
+
+// SeriesInfoLoadedMsg contains loaded series info with seasons/episodes.
+type SeriesInfoLoadedMsg struct {
+	Info *xc.SeriesInfo
+}
+
+// SeasonSelectedMsg indicates a season was chosen.
+type SeasonSelectedMsg struct {
+	Season   xc.SeasonInfo
+	Episodes []xc.Episode
+}
+
+// EpisodeSelectedMsg indicates an episode was chosen for playback.
+type EpisodeSelectedMsg struct {
+	Episode xc.Episode
+}
+
+// DownloadRequestMsg requests adding a download to the queue.
+type DownloadRequestMsg struct {
+	Name string
+	URL  string
+}
+
+// DownloadProgressMsg reports download progress updates.
+type DownloadProgressMsg struct {
+	ID         string
+	Progress   float64
+	Downloaded int64
+	Size       int64
+	Status     string
+	Error      error
+}
+
+// DownloadQueueToggleMsg toggles the download queue visibility.
+type DownloadQueueToggleMsg struct{}
+
+// DownloadCancelMsg cancels a download by ID.
+type DownloadCancelMsg struct {
+	ID string
+}
+
+// DownloadRemoveMsg removes a download from the queue by ID.
+type DownloadRemoveMsg struct {
+	ID string
 }
