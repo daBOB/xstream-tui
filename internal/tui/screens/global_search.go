@@ -33,6 +33,7 @@ type GlobalSearchModel struct {
 	search      textinput.Model
 	contentType tui.ContentType
 	allItems    []GlobalSearchItem // All items loaded from API
+	categories  map[string]string  // CategoryID -> CategoryName lookup
 	width       int
 	height      int
 	client      *xc.Client
@@ -96,6 +97,9 @@ func (m *GlobalSearchModel) loadAllContent() tea.Cmd {
 				return tui.ErrorMsg{Err: err}
 			}
 			msg.LiveStreams = streams
+			// Fetch categories for lookup
+			cats, _ := m.client.GetLiveCategories(ctx)
+			msg.Categories = cats
 
 		case tui.VODContent:
 			streams, err := m.client.GetAllVODStreams(ctx)
@@ -103,6 +107,9 @@ func (m *GlobalSearchModel) loadAllContent() tea.Cmd {
 				return tui.ErrorMsg{Err: err}
 			}
 			msg.VODStreams = streams
+			// Fetch categories for lookup
+			cats, _ := m.client.GetVODCategories(ctx)
+			msg.Categories = cats
 
 		case tui.SeriesContent:
 			series, err := m.client.GetAllSeries(ctx)
@@ -110,6 +117,9 @@ func (m *GlobalSearchModel) loadAllContent() tea.Cmd {
 				return tui.ErrorMsg{Err: err}
 			}
 			msg.Series = series
+			// Fetch categories for lookup
+			cats, _ := m.client.GetSeriesCategories(ctx)
+			msg.Categories = cats
 		}
 
 		return msg
@@ -122,12 +132,19 @@ func (m *GlobalSearchModel) SetResults(msg tui.GlobalSearchResultsMsg) {
 	m.loaded = true
 	m.allItems = make([]GlobalSearchItem, 0)
 
+	// Build category lookup map
+	m.categories = make(map[string]string)
+	for _, cat := range msg.Categories {
+		m.categories[cat.ID.String()] = cat.Name
+	}
+
 	// Add live streams
 	for i := range msg.LiveStreams {
 		s := &msg.LiveStreams[i]
+		desc := m.categories[s.CategoryID.String()]
 		m.allItems = append(m.allItems, GlobalSearchItem{
 			name:        s.Name,
-			description: s.EPGChannelID,
+			description: desc,
 			itemType:    tui.LiveContent,
 			liveStream:  s,
 		})
@@ -136,10 +153,7 @@ func (m *GlobalSearchModel) SetResults(msg tui.GlobalSearchResultsMsg) {
 	// Add VOD streams
 	for i := range msg.VODStreams {
 		s := &msg.VODStreams[i]
-		desc := ""
-		if s.Rating != "" {
-			desc = "* " + s.Rating
-		}
+		desc := m.categories[s.CategoryID.String()]
 		m.allItems = append(m.allItems, GlobalSearchItem{
 			name:        s.Name,
 			description: desc,
@@ -151,10 +165,7 @@ func (m *GlobalSearchModel) SetResults(msg tui.GlobalSearchResultsMsg) {
 	// Add series
 	for i := range msg.Series {
 		s := &msg.Series[i]
-		desc := ""
-		if s.Rating != "" {
-			desc = "* " + s.Rating
-		}
+		desc := m.categories[s.CategoryID.String()]
 		m.allItems = append(m.allItems, GlobalSearchItem{
 			name:        s.Name,
 			description: desc,
@@ -201,10 +212,10 @@ func (m *GlobalSearchModel) Update(msg tea.Msg) tea.Cmd {
 			return nil
 		case "enter":
 			return m.selectItem()
-		case "down", "j":
+		case "down":
 			m.list.Update(msg)
 			return nil
-		case "up", "k":
+		case "up":
 			m.list.Update(msg)
 			return nil
 		case "pgdown", "ctrl+d":
@@ -213,10 +224,8 @@ func (m *GlobalSearchModel) Update(msg tea.Msg) tea.Cmd {
 		case "pgup", "ctrl+u":
 			m.list.Update(msg)
 			return nil
-		case "d":
-			return m.downloadItem()
 		default:
-			// Update search input
+			// Update search input (all other keys go to text input)
 			var cmd tea.Cmd
 			m.search, cmd = m.search.Update(msg)
 			m.filterItems()
@@ -268,33 +277,6 @@ func (m *GlobalSearchModel) selectItem() tea.Cmd {
 	return nil
 }
 
-func (m *GlobalSearchModel) downloadItem() tea.Cmd {
-	item := m.list.Selected()
-	if item == nil {
-		return nil
-	}
-
-	searchItem, ok := item.(*GlobalSearchItem)
-	if !ok {
-		return nil
-	}
-
-	// Only VOD can be downloaded
-	if searchItem.itemType == tui.VODContent && searchItem.vodStream != nil {
-		container := searchItem.vodStream.Container
-		if container == "" {
-			container = "mp4"
-		}
-		url := m.client.VODStreamURL(searchItem.vodStream.ID.String(), container)
-		name := searchItem.vodStream.Name + "." + container
-		return func() tea.Msg {
-			return tui.DownloadRequestMsg{Name: name, URL: url}
-		}
-	}
-
-	return nil
-}
-
 // View renders the global search screen.
 func (m *GlobalSearchModel) View() string {
 	var b strings.Builder
@@ -334,7 +316,7 @@ func (m *GlobalSearchModel) View() string {
 	}
 
 	// Help text
-	helpText := "[Enter] Play/Select  [d] Download (VOD)  [Esc] Close"
+	helpText := "[Enter] Play/Select  [Esc] Close/Clear"
 	help := tui.HelpStyle.Render("\n" + helpText)
 	b.WriteString(help)
 

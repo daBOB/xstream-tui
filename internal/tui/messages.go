@@ -182,6 +182,7 @@ type GlobalSearchResultsMsg struct {
 	LiveStreams []xc.LiveStream
 	VODStreams  []xc.VODStream
 	Series      []xc.Series
+	Categories  []xc.Category // For category name lookup
 }
 
 // GlobalSearchSelectMsg indicates item selected from global search.
