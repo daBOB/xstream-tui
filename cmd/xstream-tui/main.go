@@ -30,6 +30,7 @@ func main() {
 	seasons := screens.NewSeasonsModel()
 	episodes := screens.NewEpisodesModel()
 	seriesBrowser := screens.NewSeriesBrowserModel()
+	globalSearch := screens.NewGlobalSearchModel()
 
 	// Inject screens into app
 	app.SetLoginScreen(login)
@@ -39,6 +40,7 @@ func main() {
 	app.SetSeasonsScreen(seasons)
 	app.SetEpisodesScreen(episodes)
 	app.SetSeriesBrowserScreen(seriesBrowser)
+	app.SetGlobalSearchScreen(globalSearch)
 
 	// Initialize download manager
 	downloadDir := getDownloadDir()

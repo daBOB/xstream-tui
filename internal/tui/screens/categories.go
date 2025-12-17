@@ -188,7 +188,7 @@ func (m *CategoriesModel) View() string {
 	b.WriteString(m.list.ScrollInfo())
 
 	// Help text
-	help := tui.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] Select  [/] Search  [Esc] Back")
+	help := tui.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] Select  [/] Search  [Ctrl+F] Global Search  [Esc] Back")
 	b.WriteString(help)
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())

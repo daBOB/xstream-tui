@@ -16,6 +16,7 @@ const (
 	EpisodesScreen
 	SeriesBrowserScreen
 	PlayerScreen
+	GlobalSearchScreen
 )
 
 // ContentType represents the type of content (Live, VOD, Series).
@@ -174,4 +175,21 @@ type DownloadRemoveMsg struct {
 // BatchDownloadMsg requests adding multiple downloads to the queue.
 type BatchDownloadMsg struct {
 	Downloads []DownloadRequestMsg
+}
+
+// GlobalSearchResultsMsg contains search results from all categories.
+type GlobalSearchResultsMsg struct {
+	LiveStreams []xc.LiveStream
+	VODStreams  []xc.VODStream
+	Series      []xc.Series
+}
+
+// GlobalSearchSelectMsg indicates item selected from global search.
+type GlobalSearchSelectMsg struct {
+	// For Live streams
+	LiveStream *xc.LiveStream
+	// For VOD streams
+	VODStream *xc.VODStream
+	// For Series
+	Series *xc.Series
 }

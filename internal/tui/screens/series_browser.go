@@ -391,7 +391,7 @@ func (m *SeriesBrowserModel) View() string {
 	b.WriteString("\n")
 
 	// Help text
-	help := "[Tab/hl] Switch  [↑↓jk] Nav  [Enter] Play  [d] Download  [D] DL Season  [Q] Queue  [Esc] Back"
+	help := "[Tab/hl] Switch  [↑↓jk] Nav  [Enter] Play  [d] Download  [D] DL Season  [Ctrl+F] Search  [Q] Queue  [Esc] Back"
 	b.WriteString(tui.HelpStyle.Render(help))
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())

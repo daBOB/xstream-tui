@@ -29,13 +29,14 @@ type App struct {
 
 	// Screen models - using interface{} to avoid circular imports
 	// Screens are set via dependency injection from main
-	login         interface{}
-	contentType   interface{}
-	categories    interface{}
-	streams       interface{}
-	seasons       interface{}
-	episodes      interface{}
+	login        interface{}
+	contentType  interface{}
+	categories   interface{}
+	streams      interface{}
+	seasons      interface{}
+	episodes     interface{}
 	seriesBrowser interface{}
+	globalSearch  interface{}
 
 	// Current series for episodes screen
 	currentSeries         xc.Series
@@ -123,6 +124,14 @@ type seriesBrowserScreen interface {
 	View() string
 }
 
+type globalSearchScreen interface {
+	SetClient(client *xc.Client)
+	SetContentType(ct ContentType) tea.Cmd
+	SetSize(width, height int)
+	Update(tea.Msg) tea.Cmd
+	View() string
+}
+
 // NewApp creates a new application instance.
 func NewApp() *App {
 	return &App{
@@ -177,6 +186,11 @@ func (a *App) SetEpisodesScreen(m interface{}) {
 // SetSeriesBrowserScreen injects the series browser screen model.
 func (a *App) SetSeriesBrowserScreen(m interface{}) {
 	a.seriesBrowser = m
+}
+
+// SetGlobalSearchScreen injects the global search screen model.
+func (a *App) SetGlobalSearchScreen(m interface{}) {
+	a.globalSearch = m
 }
 
 // Init initializes the application.
@@ -263,6 +277,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.downloadQueue.SetItems(a.downloader.Queue())
 			}
 			return a, nil
+		}
+
+		// Global search with Ctrl+F (available after selecting content type)
+		if msg.String() == "ctrl+f" && a.screen != LoginScreen && a.screen != ContentTypeScreen {
+			return a.navigateTo(GlobalSearchScreen)
 		}
 
 		// Global back navigation (except on login)
@@ -432,6 +451,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.downloadQueue.SetItems(a.downloader.Queue())
 		}
 		return a, nil
+
+	case GlobalSearchResultsMsg:
+		a.loading = false
+		if s, ok := a.globalSearch.(globalSearchScreen); ok {
+			return a, s.Update(msg)
+		}
+		return a, nil
 	}
 
 	// Forward to current screen
@@ -462,6 +488,9 @@ func (a *App) updateScreenSizes() {
 		s.SetSize(a.width, a.height)
 	}
 	if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
+		s.SetSize(a.width, a.height)
+	}
+	if s, ok := a.globalSearch.(globalSearchScreen); ok {
 		s.SetSize(a.width, a.height)
 	}
 }
@@ -496,6 +525,10 @@ func (a *App) updateScreen(msg tea.Msg) (*App, tea.Cmd) {
 		}
 	case SeriesBrowserScreen:
 		if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
+			cmd = s.Update(msg)
+		}
+	case GlobalSearchScreen:
+		if s, ok := a.globalSearch.(globalSearchScreen); ok {
 			cmd = s.Update(msg)
 		}
 	}
@@ -539,6 +572,13 @@ func (a *App) navigateTo(screen Screen) (*App, tea.Cmd) {
 		if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
 			s.SetClient(a.client)
 			cmd = s.SetSeries(a.currentSeries)
+		}
+	case GlobalSearchScreen:
+		if s, ok := a.globalSearch.(globalSearchScreen); ok {
+			s.SetClient(a.client)
+			a.loading = true
+			a.loadingMsg = "Loading all " + a.currentType.String() + "..."
+			cmd = s.SetContentType(a.currentType)
 		}
 	}
 
@@ -666,6 +706,10 @@ func (a *App) renderScreen() string {
 		}
 	case SeriesBrowserScreen:
 		if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
+			return s.View()
+		}
+	case GlobalSearchScreen:
+		if s, ok := a.globalSearch.(globalSearchScreen); ok {
 			return s.View()
 		}
 	}
