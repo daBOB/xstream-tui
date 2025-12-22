@@ -94,6 +94,22 @@ func (m *LoginModel) Focus() tea.Cmd {
 	return m.inputs[inputHost].Focus()
 }
 
+// HasCompleteCredentials returns true if all required env vars are set.
+func (m *LoginModel) HasCompleteCredentials() bool {
+	host := strings.TrimSpace(m.inputs[inputHost].Value())
+	user := strings.TrimSpace(m.inputs[inputUser].Value())
+	pass := strings.TrimSpace(m.inputs[inputPass].Value())
+	return host != "" && user != "" && pass != ""
+}
+
+// AutoLogin attempts login if credentials are complete from env vars.
+func (m *LoginModel) AutoLogin() tea.Cmd {
+	if m.HasCompleteCredentials() {
+		return m.submit()
+	}
+	return nil
+}
+
 // SetSize sets the screen dimensions.
 func (m *LoginModel) SetSize(width, height int) {
 	m.width = width

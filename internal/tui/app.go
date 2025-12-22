@@ -126,7 +126,14 @@ func (a *App) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
 	if s, ok := a.login.(loginScreen); ok {
-		cmds = append(cmds, s.Focus())
+		// Try auto-login if env vars are complete
+		if autoCmd := s.AutoLogin(); autoCmd != nil {
+			a.loading = true
+			a.loadingMsg = "Logging in..."
+			cmds = append(cmds, autoCmd, a.spinnerTick())
+		} else {
+			cmds = append(cmds, s.Focus())
+		}
 	}
 
 	if a.downloadDaemon != nil {

@@ -46,7 +46,8 @@ func (a *App) handleKeyMsg(msg tea.KeyMsg) (*App, tea.Cmd) {
 		return a, tea.Quit
 	}
 
-	return a, nil
+	// Forward unhandled keys to current screen
+	return a.updateScreen(msg)
 }
 
 // handleDownloadQueueKey handles keys when download queue is visible.

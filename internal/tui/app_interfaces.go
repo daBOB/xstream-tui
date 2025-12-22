@@ -11,6 +11,7 @@ import (
 
 type loginScreen interface {
 	Focus() tea.Cmd
+	AutoLogin() tea.Cmd
 	SetSize(width, height int)
 	SetError(err string)
 	Update(tea.Msg) tea.Cmd
