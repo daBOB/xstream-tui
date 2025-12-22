@@ -4,17 +4,25 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 )
 
-// Player is the interface for media player implementations.
+// Player is the minimal interface for media player implementations.
+// All players must implement Wait and Stop.
 type Player interface {
+	Wait() error
+	Stop() error
+}
+
+// ControllablePlayer extends Player with playback control capabilities.
+// Only players with IPC support (like mpv) implement this interface.
+type ControllablePlayer interface {
+	Player
 	Pause() error
 	Resume() error
 	TogglePause() error
 	Seek(seconds int) error
 	SetVolume(vol int) error
-	Wait() error
-	Stop() error
 }
 
 // PlayerType indicates which player backend is active.
@@ -111,10 +119,15 @@ func (m *Manager) stopLocked() error {
 	m.current = nil
 	m.playing = false
 
-	// Wait for monitor goroutine with timeout
+	// Wait for monitor goroutine with timeout to prevent deadlock
 	if done != nil {
 		m.mu.Unlock()
-		<-done
+		select {
+		case <-done:
+			// Monitor goroutine finished cleanly
+		case <-time.After(5 * time.Second):
+			// Timeout: monitor goroutine hung, continue without waiting
+		}
 		m.mu.Lock()
 	}
 
@@ -128,35 +141,35 @@ func (m *Manager) Stop() error {
 	return m.stopLocked()
 }
 
-// TogglePause toggles pause state.
+// TogglePause toggles pause state (only works if player is controllable).
 func (m *Manager) TogglePause() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.current != nil {
-		return m.current.TogglePause()
+	if cp, ok := m.current.(ControllablePlayer); ok {
+		return cp.TogglePause()
 	}
 	return nil
 }
 
-// Seek seeks by relative seconds.
+// Seek seeks by relative seconds (only works if player is controllable).
 func (m *Manager) Seek(seconds int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.current != nil {
-		return m.current.Seek(seconds)
+	if cp, ok := m.current.(ControllablePlayer); ok {
+		return cp.Seek(seconds)
 	}
 	return nil
 }
 
-// SetVolume sets player volume (0-100).
+// SetVolume sets player volume (0-100) (only works if player is controllable).
 func (m *Manager) SetVolume(vol int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.current != nil {
-		return m.current.SetVolume(vol)
+	if cp, ok := m.current.(ControllablePlayer); ok {
+		return cp.SetVolume(vol)
 	}
 	return nil
 }
@@ -180,4 +193,13 @@ func (m *Manager) Type() PlayerType {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.playerType
+}
+
+// IsControllable returns whether the current player supports playback control.
+// VLC lacks IPC, so only mpv is controllable.
+func (m *Manager) IsControllable() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.current.(ControllablePlayer)
+	return ok
 }

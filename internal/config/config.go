@@ -4,6 +4,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -17,11 +18,25 @@ type Server struct {
 	// Password stored separately in credentials file
 }
 
+// PlayerConfig holds player-related settings.
+type PlayerConfig struct {
+	Preferred string        `toml:"preferred"` // "mpv" or "vlc"
+	Timeout   time.Duration `toml:"timeout"`   // player startup timeout
+}
+
+// NetworkConfig holds network-related settings.
+type NetworkConfig struct {
+	Timeout    time.Duration `toml:"timeout"`     // HTTP request timeout
+	MaxRetries int           `toml:"max_retries"` // max retry attempts
+}
+
 // Config holds application settings.
 type Config struct {
-	DefaultServer string   `toml:"default_server"`
-	Servers       []Server `toml:"servers"`
-	Player        string   `toml:"player"` // "mpv" or "vlc"
+	DefaultServer string        `toml:"default_server"`
+	Servers       []Server      `toml:"servers"`
+	Player        string        `toml:"player"` // deprecated, use PlayerConfig
+	PlayerConfig  PlayerConfig  `toml:"player_config"`
+	Network       NetworkConfig `toml:"network"`
 }
 
 // Dir returns the configuration directory path.
@@ -34,18 +49,39 @@ func Dir() string {
 	return filepath.Join(home, ".config", "xstream-tui")
 }
 
+// DefaultConfig returns config with sensible defaults.
+func DefaultConfig() *Config {
+	return &Config{
+		Player: "mpv",
+		PlayerConfig: PlayerConfig{
+			Preferred: "mpv",
+			Timeout:   30 * time.Second,
+		},
+		Network: NetworkConfig{
+			Timeout:    30 * time.Second,
+			MaxRetries: 3,
+		},
+	}
+}
+
 // Load reads config from file or returns defaults.
 func Load() (*Config, error) {
 	path := filepath.Join(Dir(), "config.toml")
 
-	var cfg Config
-	if _, err := toml.DecodeFile(path, &cfg); err != nil {
+	cfg := DefaultConfig()
+	if _, err := toml.DecodeFile(path, cfg); err != nil {
 		if os.IsNotExist(err) {
-			return &Config{Player: "mpv"}, nil // Default config
+			return cfg, nil
 		}
 		return nil, err
 	}
-	return &cfg, nil
+
+	// Migrate legacy Player field to PlayerConfig
+	if cfg.Player != "" && cfg.PlayerConfig.Preferred == "" {
+		cfg.PlayerConfig.Preferred = cfg.Player
+	}
+
+	return cfg, nil
 }
 
 // Save writes config to file with secure permissions.

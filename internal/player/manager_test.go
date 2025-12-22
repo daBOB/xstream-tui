@@ -55,31 +55,19 @@ func TestManagerOnExit(t *testing.T) {
 	}
 }
 
-func TestPlayerInterface(t *testing.T) {
-	// Verify VLCPlayer implements Player interface
+func TestPlayerInterfaces(t *testing.T) {
+	// VLCPlayer implements minimal Player interface (no control methods)
 	var _ Player = (*VLCPlayer)(nil)
 
-	// Verify MPVPlayer implements Player interface
-	var _ Player = (*MPVPlayer)(nil)
+	// MPVPlayer implements ControllablePlayer (full control via IPC)
+	var _ ControllablePlayer = (*MPVPlayer)(nil)
 }
 
-func TestVLCPlayerNoOps(t *testing.T) {
-	// VLC no-op methods should not error
-	p := &VLCPlayer{}
+func TestManagerIsControllable(t *testing.T) {
+	m := NewManager()
 
-	if err := p.Pause(); err != nil {
-		t.Errorf("VLC Pause should return nil, got: %v", err)
-	}
-	if err := p.Resume(); err != nil {
-		t.Errorf("VLC Resume should return nil, got: %v", err)
-	}
-	if err := p.TogglePause(); err != nil {
-		t.Errorf("VLC TogglePause should return nil, got: %v", err)
-	}
-	if err := p.Seek(10); err != nil {
-		t.Errorf("VLC Seek should return nil, got: %v", err)
-	}
-	if err := p.SetVolume(50); err != nil {
-		t.Errorf("VLC SetVolume should return nil, got: %v", err)
+	// No player = not controllable
+	if m.IsControllable() {
+		t.Error("manager with no player should not be controllable")
 	}
 }

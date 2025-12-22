@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -194,7 +195,10 @@ func (m *LoginModel) submit() tea.Cmd {
 			return tui.AuthErrorMsg{Err: err}
 		}
 
-		auth, err := client.Authenticate(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		auth, err := client.Authenticate(ctx)
 		if err != nil {
 			return tui.AuthErrorMsg{Err: err}
 		}

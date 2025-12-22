@@ -3,6 +3,7 @@ package screens
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -75,7 +76,9 @@ func (m *CategoriesModel) loadCategories() tea.Cmd {
 			return tui.ErrorMsg{Err: xc.ErrInvalidConfig}
 		}
 
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
 		var cats []xc.Category
 		var err error
 

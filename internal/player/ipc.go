@@ -58,7 +58,15 @@ func (c *IPCClient) readLoop() {
 	for {
 		line, err := c.reader.ReadBytes('\n')
 		if err != nil {
-			return // Socket closed
+			// Socket closed or error - cleanup pending requests
+			c.mu.Lock()
+			c.closed = true
+			for id, ch := range c.pending {
+				close(ch)
+				delete(c.pending, id)
+			}
+			c.mu.Unlock()
+			return
 		}
 
 		var resp Response

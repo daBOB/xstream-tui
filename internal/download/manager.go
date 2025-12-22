@@ -1,17 +1,12 @@
 // Package download provides a download manager with queue functionality.
 // Only one download runs at a time; others wait in queue.
-// Files are downloaded to a user-specified directory with sanitized filenames.
-// Existing files with the same name will be overwritten.
 package download
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -56,12 +51,12 @@ type Item struct {
 	URL        string
 	FilePath   string
 	Status     Status
-	Progress   float64 // 0.0 to 1.0
-	Size       int64   // total bytes
-	Downloaded int64   // bytes downloaded
+	Progress   float64
+	Size       int64
+	Downloaded int64
 	Error      error
 	StartedAt  time.Time
-	cancel     context.CancelFunc
+	cancel     func()
 }
 
 // ProgressUpdate is sent when download progress changes.
@@ -82,7 +77,7 @@ type Manager struct {
 	httpClient   *http.Client
 	onProgress   func(ProgressUpdate)
 	nextID       int
-	isProcessing bool // prevents concurrent processQueue execution
+	isProcessing bool
 }
 
 // NewManager creates a download manager with specified download directory.
@@ -90,10 +85,8 @@ func NewManager(downloadDir string) *Manager {
 	return &Manager{
 		queue:       make([]*Item, 0),
 		downloadDir: downloadDir,
-		httpClient: &http.Client{
-			Timeout: 0, // No timeout for downloads
-		},
-		nextID: 1,
+		httpClient:  &http.Client{Timeout: 0},
+		nextID:      1,
 	}
 }
 
@@ -105,15 +98,12 @@ func (m *Manager) SetProgressCallback(cb func(ProgressUpdate)) {
 }
 
 // Add adds a new download to the queue.
-// Returns empty string and sets error if URL is invalid.
 func (m *Manager) Add(name, urlStr string) string {
 	return m.AddWithPath(name, urlStr, "")
 }
 
-// AddWithPath adds a download with optional subpath (e.g., "SeriesName/Season 1").
-// Returns empty string and sets error if URL is invalid.
+// AddWithPath adds a download with optional subpath.
 func (m *Manager) AddWithPath(name, urlStr, subPath string) string {
-	// Validate URL before adding to queue
 	if err := validateURL(urlStr); err != nil {
 		return ""
 	}
@@ -124,10 +114,8 @@ func (m *Manager) AddWithPath(name, urlStr, subPath string) string {
 	id := fmt.Sprintf("dl-%d", m.nextID)
 	m.nextID++
 
-	// Sanitize filename
 	safeName := sanitizeFilename(name)
 
-	// Build file path with optional subfolder
 	var filePath string
 	if subPath != "" {
 		safeSubPath := sanitizePath(subPath)
@@ -145,14 +133,12 @@ func (m *Manager) AddWithPath(name, urlStr, subPath string) string {
 	}
 
 	m.queue = append(m.queue, item)
-
-	// Start processing if this is the only item
 	go m.processQueue()
 
 	return id
 }
 
-// validateURL checks that URL is valid and uses http or https scheme.
+// validateURL checks that URL uses http or https scheme.
 func validateURL(urlStr string) error {
 	u, err := url.Parse(urlStr)
 	if err != nil {
@@ -229,174 +215,8 @@ func (m *Manager) ActiveDownload() *Item {
 	return nil
 }
 
-func (m *Manager) processQueue() {
-	m.mu.Lock()
-
-	// Check if already processing (prevents race condition)
-	if m.isProcessing {
-		m.mu.Unlock()
-		return
-	}
-
-	// Find next queued item
-	var next *Item
-	for _, item := range m.queue {
-		if item.Status == StatusQueued {
-			next = item
-			break
-		}
-	}
-
-	if next == nil {
-		m.mu.Unlock()
-		return
-	}
-
-	m.isProcessing = true
-	next.Status = StatusDownloading
-	next.StartedAt = time.Now()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	next.cancel = cancel
-
-	m.mu.Unlock()
-
-	// Download in goroutine
-	go func() {
-		err := m.download(ctx, next)
-		m.mu.Lock()
-		m.isProcessing = false // Reset processing flag
-		if err != nil {
-			if ctx.Err() == context.Canceled {
-				next.Status = StatusCancelled
-			} else {
-				next.Status = StatusFailed
-				next.Error = err
-			}
-		} else {
-			next.Status = StatusCompleted
-			next.Progress = 1.0
-		}
-		m.mu.Unlock()
-
-		m.notifyProgress(ProgressUpdate{
-			ID:         next.ID,
-			Progress:   next.Progress,
-			Downloaded: next.Downloaded,
-			Size:       next.Size,
-			Status:     next.Status,
-			Error:      next.Error,
-		})
-
-		// Process next item
-		m.processQueue()
-	}()
-}
-
-func (m *Manager) download(ctx context.Context, item *Item) error {
-	// Ensure download directory exists (including any subfolders for series/season)
-	fileDir := filepath.Dir(item.FilePath)
-	if err := os.MkdirAll(fileDir, 0755); err != nil {
-		return fmt.Errorf("create dir: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.URL, nil)
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-
-	resp, err := m.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("http request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("http status: %d", resp.StatusCode)
-	}
-
-	// Get total size
-	m.mu.Lock()
-	item.Size = resp.ContentLength
-	m.mu.Unlock()
-
-	// Create temp file
-	tmpPath := item.FilePath + ".tmp"
-	file, err := os.Create(tmpPath)
-	if err != nil {
-		return fmt.Errorf("create file: %w", err)
-	}
-
-	// Download with progress tracking
-	buf := make([]byte, 32*1024) // 32KB buffer
-	for {
-		select {
-		case <-ctx.Done():
-			file.Close()
-			os.Remove(tmpPath)
-			return ctx.Err()
-		default:
-		}
-
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, writeErr := file.Write(buf[:n]); writeErr != nil {
-				file.Close()
-				os.Remove(tmpPath)
-				return fmt.Errorf("write file: %w", writeErr)
-			}
-
-			m.mu.Lock()
-			item.Downloaded += int64(n)
-			if item.Size > 0 {
-				item.Progress = float64(item.Downloaded) / float64(item.Size)
-			}
-			downloaded := item.Downloaded
-			size := item.Size
-			progress := item.Progress
-			m.mu.Unlock()
-
-			m.notifyProgress(ProgressUpdate{
-				ID:         item.ID,
-				Progress:   progress,
-				Downloaded: downloaded,
-				Size:       size,
-				Status:     StatusDownloading,
-			})
-		}
-
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			file.Close()
-			os.Remove(tmpPath)
-			return fmt.Errorf("read body: %w", readErr)
-		}
-	}
-
-	file.Close()
-
-	// Rename temp file to final name
-	if err := os.Rename(tmpPath, item.FilePath); err != nil {
-		return fmt.Errorf("rename file: %w", err)
-	}
-
-	return nil
-}
-
-func (m *Manager) notifyProgress(update ProgressUpdate) {
-	m.mu.RLock()
-	cb := m.onProgress
-	m.mu.RUnlock()
-
-	if cb != nil {
-		cb(update)
-	}
-}
-
+// sanitizeFilename replaces problematic characters in filenames.
 func sanitizeFilename(name string) string {
-	// Replace problematic characters
 	result := make([]rune, 0, len(name))
 	for _, r := range name {
 		switch r {
@@ -417,10 +237,8 @@ func sanitizeFilename(name string) string {
 	return s
 }
 
-// sanitizePath sanitizes a path with multiple segments (e.g., "Series/Season 1").
-// Preserves path separators but sanitizes each segment.
+// sanitizePath sanitizes a path with multiple segments.
 func sanitizePath(path string) string {
-	// Split by path separators
 	segments := strings.Split(path, "/")
 	sanitized := make([]string, 0, len(segments))
 
@@ -428,7 +246,6 @@ func sanitizePath(path string) string {
 		if seg == "" {
 			continue
 		}
-		// Sanitize each segment like a filename
 		safeSeg := sanitizeFilename(seg)
 		sanitized = append(sanitized, safeSeg)
 	}

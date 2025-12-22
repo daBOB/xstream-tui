@@ -237,32 +237,32 @@ type LiveStream struct {
 
 // VODStream represents a video-on-demand item (movie).
 type VODStream struct {
-	ID           FlexibleID `json:"stream_id"`
-	Num          FlexibleID `json:"num"`
-	Name         string     `json:"name"`
-	Icon         string     `json:"stream_icon"`
-	CategoryID   FlexibleID `json:"category_id"`
-	Container    string     `json:"container_extension"`
-	Added        FlexibleID `json:"added"`
-	Rating       string     `json:"rating"`
+	ID           FlexibleID    `json:"stream_id"`
+	Num          FlexibleID    `json:"num"`
+	Name         string        `json:"name"`
+	Icon         string        `json:"stream_icon"`
+	CategoryID   FlexibleID    `json:"category_id"`
+	Container    string        `json:"container_extension"`
+	Added        FlexibleID    `json:"added"`
+	Rating       string        `json:"rating"`
 	Rating5Based FlexibleFloat `json:"rating_5based"`
-	DirectSource string     `json:"direct_source"`
+	DirectSource string        `json:"direct_source"`
 }
 
 // Series represents a TV series.
 type Series struct {
-	ID           FlexibleID `json:"series_id"`
-	Num          FlexibleID `json:"num"`
-	Name         string     `json:"name"`
-	Cover        string     `json:"cover"`
-	Plot         string     `json:"plot"`
-	Cast         string     `json:"cast"`
-	Director     string     `json:"director"`
-	Genre        string     `json:"genre"`
-	ReleaseDate  string     `json:"releaseDate"`
-	Rating       string     `json:"rating"`
+	ID           FlexibleID    `json:"series_id"`
+	Num          FlexibleID    `json:"num"`
+	Name         string        `json:"name"`
+	Cover        string        `json:"cover"`
+	Plot         string        `json:"plot"`
+	Cast         string        `json:"cast"`
+	Director     string        `json:"director"`
+	Genre        string        `json:"genre"`
+	ReleaseDate  string        `json:"releaseDate"`
+	Rating       string        `json:"rating"`
 	Rating5Based FlexibleFloat `json:"rating_5based"`
-	CategoryID   FlexibleID `json:"category_id"`
+	CategoryID   FlexibleID    `json:"category_id"`
 }
 
 // SeriesInfo contains detailed series information with episodes.

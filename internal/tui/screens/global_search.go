@@ -3,6 +3,7 @@ package screens
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -87,7 +88,9 @@ func (m *GlobalSearchModel) loadAllContent() tea.Cmd {
 			return tui.ErrorMsg{Err: xc.ErrInvalidConfig}
 		}
 
-		ctx := context.Background()
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
 		var msg tui.GlobalSearchResultsMsg
 
 		switch m.contentType {

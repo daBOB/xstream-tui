@@ -38,6 +38,7 @@ type Client struct {
 	username    string
 	password    string
 	httpClient  *http.Client
+	retryConfig RetryConfig
 	debug       bool      // Enable raw response logging
 	debugWriter io.Writer // Writer for debug output (defaults to os.Stderr)
 }
@@ -73,6 +74,20 @@ func WithDebugWriter(w io.Writer) ClientOption {
 	}
 }
 
+// WithRetry configures retry behavior for transient failures.
+func WithRetry(config RetryConfig) ClientOption {
+	return func(c *Client) {
+		c.retryConfig = config
+	}
+}
+
+// WithNoRetry disables retry logic.
+func WithNoRetry() ClientOption {
+	return func(c *Client) {
+		c.retryConfig.MaxRetries = 0
+	}
+}
+
 // NewClient creates a new XC API client.
 // Host should include protocol (http:// or https://).
 // Returns error if host, username, or password are empty.
@@ -104,6 +119,7 @@ func NewClient(host string, username, password string, opts ...ClientOption) (*C
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		retryConfig: DefaultRetryConfig(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -131,46 +147,102 @@ func (c *Client) buildURL(action string, params map[string]string) (string, erro
 	return u.String(), nil
 }
 
-// get performs a GET request and decodes JSON response.
+// get performs a GET request with retry logic and decodes JSON response.
 func (c *Client) get(ctx context.Context, action string, params map[string]string, result interface{}) error {
 	reqURL, err := c.buildURL(action, params)
 	if err != nil {
-		return err
+		return fmt.Errorf("xc %s: %w", actionName(action), err)
 	}
 
+	var lastErr error
+	maxAttempts := c.retryConfig.MaxRetries + 1
+
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// Check context before each attempt
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("xc %s: %w", actionName(action), err)
+		}
+
+		// Wait before retry (skip on first attempt)
+		if attempt > 0 {
+			delay := calculateBackoff(attempt-1, c.retryConfig)
+			select {
+			case <-time.After(delay):
+			case <-ctx.Done():
+				return fmt.Errorf("xc %s: %w", actionName(action), ctx.Err())
+			}
+		}
+
+		lastErr = c.doRequest(ctx, reqURL, action, result)
+		if lastErr == nil {
+			return nil
+		}
+
+		// Don't retry if error is not retryable
+		if !isRetryable(lastErr) {
+			return lastErr
+		}
+	}
+
+	return fmt.Errorf("xc %s: max retries exceeded: %w", actionName(action), lastErr)
+}
+
+// doRequest performs a single HTTP request attempt.
+func (c *Client) doRequest(ctx context.Context, reqURL, action string, result interface{}) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return fmt.Errorf("xc %s: create request: %w", actionName(action), err)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("http request: %w", err)
+		// Wrap network errors to indicate retryability
+		if isRetryable(err) {
+			return &retryableError{err: err, retryable: true}
+		}
+		return fmt.Errorf("xc %s: http request: %w", actionName(action), err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// Limit error body read to prevent memory exhaustion
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
-		return fmt.Errorf("api error: status %d: %s", resp.StatusCode, string(body))
+		err := fmt.Errorf("xc %s: status %d: %s", actionName(action), resp.StatusCode, string(body))
+
+		// Check if this status code is retryable
+		if isRetryableStatus(resp.StatusCode) {
+			return &retryableError{err: err, statusCode: resp.StatusCode, retryable: true}
+		}
+
+		// Auth errors should never be retried
+		if isAuthError(resp.StatusCode) {
+			return &retryableError{err: err, statusCode: resp.StatusCode, retryable: false}
+		}
+
+		return err
 	}
 
-	// Read response body for debug output and decoding
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+		return fmt.Errorf("xc %s: read response: %w", actionName(action), err)
 	}
 
-	// Debug: output raw response
 	if c.debug {
 		c.logDebug(action, body)
 	}
 
 	if err := json.Unmarshal(body, result); err != nil {
-		return fmt.Errorf("decode response: %w", err)
+		return fmt.Errorf("xc %s: decode response: %w", actionName(action), err)
 	}
 
 	return nil
+}
+
+// actionName returns a display name for the action (or "auth" if empty).
+func actionName(action string) string {
+	if action == "" {
+		return "auth"
+	}
+	return action
 }
 
 // LiveStreamURL returns the playback URL for a live stream.

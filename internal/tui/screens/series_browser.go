@@ -2,10 +2,7 @@
 package screens
 
 import (
-	"context"
 	"fmt"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -27,7 +24,7 @@ type SeriesBrowserModel struct {
 	series        xc.Series
 	seriesInfo    *xc.SeriesInfo
 	allEpisodes   map[string][]xc.Episode
-	currentSeason string // Current season name for downloads
+	currentSeason string
 	loading       bool
 
 	width  int
@@ -64,7 +61,6 @@ func (m *SeriesBrowserModel) SetSeries(series xc.Series) tea.Cmd {
 	m.loading = true
 	m.splitView.SetActive(components.LeftPane)
 
-	// Clear previous list data to avoid showing stale content
 	m.seasons.SetItems(nil)
 	m.episodes.SetItems(nil)
 
@@ -85,21 +81,6 @@ func (m *SeriesBrowserModel) SetSize(width, height int) {
 
 	m.seasons.SetSize(leftW-2, leftH-2)
 	m.episodes.SetSize(rightW-2, rightH-2)
-}
-
-func (m *SeriesBrowserModel) loadSeriesInfo() tea.Cmd {
-	return func() tea.Msg {
-		if m.client == nil {
-			return tui.ErrorMsg{Err: xc.ErrInvalidConfig}
-		}
-
-		ctx := context.Background()
-		info, err := m.client.GetSeriesInfo(ctx, m.series.ID.String())
-		if err != nil {
-			return tui.ErrorMsg{Err: err}
-		}
-		return tui.SeriesInfoLoadedMsg{Info: info}
-	}
 }
 
 // Update handles input events.
@@ -140,11 +121,9 @@ func (m *SeriesBrowserModel) Update(msg tea.Msg) tea.Cmd {
 			return nil
 		case "enter":
 			if m.splitView.Active() == components.LeftPane {
-				// Selecting a season populates episodes
 				m.updateEpisodesForSelectedSeason()
 				m.splitView.SetActive(components.RightPane)
 			} else {
-				// Play episode
 				return m.playSelectedEpisode()
 			}
 		case "d":
@@ -152,10 +131,8 @@ func (m *SeriesBrowserModel) Update(msg tea.Msg) tea.Cmd {
 				return m.downloadSelectedEpisode()
 			}
 		case "D":
-			// Download all episodes in current season (from either pane)
 			return m.downloadSelectedSeason()
 		case "Q":
-			// Toggle download queue view
 			return func() tea.Msg {
 				return tui.DownloadQueueToggleMsg{}
 			}
@@ -167,7 +144,6 @@ func (m *SeriesBrowserModel) Update(msg tea.Msg) tea.Cmd {
 			m.seasons, cmd = m.seasons.Update(msg)
 			cmds = append(cmds, cmd)
 
-			// Update episodes when season selection changes
 			if msg.String() == "up" || msg.String() == "down" ||
 				msg.String() == "j" || msg.String() == "k" {
 				m.updateEpisodesForSelectedSeason()
@@ -182,183 +158,14 @@ func (m *SeriesBrowserModel) Update(msg tea.Msg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (m *SeriesBrowserModel) populateSeasons() {
-	if m.seriesInfo == nil {
-		return
-	}
-
-	// If seasons array is empty but we have episodes, generate seasons from episodes
-	if len(m.seriesInfo.Seasons) == 0 && len(m.seriesInfo.Episodes) > 0 {
-		m.generateSeasonsFromEpisodes()
-		return
-	}
-
-	items := make([]components.FancyListItem, len(m.seriesInfo.Seasons))
-	for i, s := range m.seriesInfo.Seasons {
-		seasonNum := s.SeasonNumber.String()
-		actualCount := len(m.seriesInfo.Episodes[seasonNum])
-		items[i] = seasonBrowserItem{
-			SeasonInfo:         s,
-			ActualEpisodeCount: actualCount,
-		}
-	}
-	m.seasons.SetItems(items)
-}
-
-// generateSeasonsFromEpisodes creates season entries from episodes when seasons array is empty.
-func (m *SeriesBrowserModel) generateSeasonsFromEpisodes() {
-	// Collect season numbers and sort them
-	seasonNums := make([]string, 0, len(m.seriesInfo.Episodes))
-	for seasonNum := range m.seriesInfo.Episodes {
-		seasonNums = append(seasonNums, seasonNum)
-	}
-	// Sort season numbers numerically
-	sort.Slice(seasonNums, func(i, j int) bool {
-		ni, _ := strconv.Atoi(seasonNums[i])
-		nj, _ := strconv.Atoi(seasonNums[j])
-		return ni < nj
-	})
-
-	items := make([]components.FancyListItem, len(seasonNums))
-	for i, seasonNum := range seasonNums {
-		episodes := m.seriesInfo.Episodes[seasonNum]
-		items[i] = seasonBrowserItem{
-			SeasonInfo: xc.SeasonInfo{
-				SeasonNumber: xc.NewFlexibleIDFromString(seasonNum),
-				Name:         fmt.Sprintf("Season %s", seasonNum),
-				EpisodeCount: xc.NewFlexibleID(len(episodes)),
-			},
-			ActualEpisodeCount: len(episodes),
-		}
-	}
-	m.seasons.SetItems(items)
-}
-
-func (m *SeriesBrowserModel) selectFirstSeason() {
-	if m.seasons.Len() > 0 {
-		m.updateEpisodesForSelectedSeason()
-	}
-}
-
-func (m *SeriesBrowserModel) updateEpisodesForSelectedSeason() {
-	item := m.seasons.Selected()
-	if item == nil {
-		return
-	}
-
-	seasonItem, ok := item.(seasonBrowserItem)
-	if !ok {
-		return
-	}
-
-	// Track current season name for downloads
-	m.currentSeason = seasonItem.Name
-
-	seasonNum := seasonItem.SeasonNumber.String()
-	episodes := m.allEpisodes[seasonNum]
-
-	items := make([]components.FancyListItem, len(episodes))
-	for i, ep := range episodes {
-		items[i] = episodeBrowserItem{Episode: ep}
-	}
-	m.episodes.SetItems(items)
-}
-
-func (m *SeriesBrowserModel) playSelectedEpisode() tea.Cmd {
-	item := m.episodes.Selected()
-	if item == nil {
-		return nil
-	}
-
-	epItem, ok := item.(episodeBrowserItem)
-	if !ok {
-		return nil
-	}
-
-	return func() tea.Msg {
-		return tui.EpisodeSelectedMsg{Episode: epItem.Episode}
-	}
-}
-
-func (m *SeriesBrowserModel) downloadSelectedEpisode() tea.Cmd {
-	item := m.episodes.Selected()
-	if item == nil || m.client == nil {
-		return nil
-	}
-
-	epItem, ok := item.(episodeBrowserItem)
-	if !ok {
-		return nil
-	}
-
-	ep := epItem.Episode
-	container := ep.ContainerExt
-	if container == "" {
-		container = "mp4"
-	}
-	url := m.client.SeriesEpisodeURL(ep.ID.String(), container)
-	name := ep.Title + "." + container
-
-	return func() tea.Msg {
-		return tui.DownloadRequestMsg{
-			Name:       name,
-			URL:        url,
-			SeriesName: m.series.Name,
-			SeasonName: m.currentSeason,
-		}
-	}
-}
-
-func (m *SeriesBrowserModel) downloadSelectedSeason() tea.Cmd {
-	item := m.seasons.Selected()
-	if item == nil || m.client == nil {
-		return nil
-	}
-
-	seasonItem, ok := item.(seasonBrowserItem)
-	if !ok {
-		return nil
-	}
-
-	seasonNum := seasonItem.SeasonNumber.String()
-	episodes := m.allEpisodes[seasonNum]
-	if len(episodes) == 0 {
-		return nil
-	}
-
-	// Build batch download messages for all episodes
-	var msgs []tui.DownloadRequestMsg
-	for _, ep := range episodes {
-		container := ep.ContainerExt
-		if container == "" {
-			container = "mp4"
-		}
-		url := m.client.SeriesEpisodeURL(ep.ID.String(), container)
-		name := ep.Title + "." + container
-
-		msgs = append(msgs, tui.DownloadRequestMsg{
-			Name:       name,
-			URL:        url,
-			SeriesName: m.series.Name,
-			SeasonName: seasonItem.Name,
-		})
-	}
-
-	return func() tea.Msg {
-		return tui.BatchDownloadMsg{Downloads: msgs}
-	}
-}
-
 // View renders the series browser.
 func (m *SeriesBrowserModel) View() string {
 	var b strings.Builder
 
-	// Header
 	title := tui.TitleStyle.Render("📺 " + m.series.Name)
 	b.WriteString(title)
 	b.WriteString("\n")
 
-	// Series info
 	if m.series.Rating != "" {
 		info := tui.ItemDimStyle.Render("★ " + m.series.Rating)
 		b.WriteString(info)
@@ -366,19 +173,16 @@ func (m *SeriesBrowserModel) View() string {
 	}
 	b.WriteString("\n")
 
-	// Loading state
 	if m.loading {
 		b.WriteString(m.spinner.View() + " Loading series info...")
 		b.WriteString("\n")
 	} else if m.seriesInfo == nil {
 		b.WriteString(tui.ItemDimStyle.Render("No series data"))
 	} else {
-		// Set titles with counts
 		seasonTitle := fmt.Sprintf("Seasons (%d)", m.seasons.Len())
 		episodeTitle := fmt.Sprintf("Episodes (%d)", m.episodes.Len())
 		m.splitView.SetTitles(seasonTitle, episodeTitle)
 
-		// Render split view
 		styles := components.DefaultSplitViewStyles()
 		splitContent := m.splitView.Render(
 			m.seasons.View(),
@@ -390,35 +194,8 @@ func (m *SeriesBrowserModel) View() string {
 
 	b.WriteString("\n")
 
-	// Help text
 	help := "[Tab/hl] Switch  [↑↓jk] Nav  [Enter] Play  [d] Download  [D] DL Season  [Ctrl+F] Search  [Q] Queue  [Esc] Back"
 	b.WriteString(tui.HelpStyle.Render(help))
 
 	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
-}
-
-// seasonBrowserItem wraps SeasonInfo for FancyList.
-type seasonBrowserItem struct {
-	xc.SeasonInfo
-	ActualEpisodeCount int
-}
-
-func (s seasonBrowserItem) FilterValue() string { return s.Name }
-func (s seasonBrowserItem) Title() string       { return s.Name }
-func (s seasonBrowserItem) Description() string {
-	return fmt.Sprintf("%d episodes", s.ActualEpisodeCount)
-}
-
-// episodeBrowserItem wraps Episode for FancyList.
-type episodeBrowserItem struct {
-	xc.Episode
-}
-
-func (e episodeBrowserItem) FilterValue() string { return e.Episode.Title }
-func (e episodeBrowserItem) Title() string       { return e.Episode.Title }
-func (e episodeBrowserItem) Description() string {
-	if e.Info.Duration != "" {
-		return "⏱ " + e.Info.Duration
-	}
-	return ""
 }
