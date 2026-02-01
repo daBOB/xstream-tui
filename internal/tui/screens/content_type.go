@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/altmueller/xstream-tui/internal/tui"
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 )
 
 // ContentTypeModel handles content type selection (Live/VOD/Series).
@@ -87,13 +88,13 @@ func (m *ContentTypeModel) View() string {
 	var b strings.Builder
 
 	// Title
-	title := tui.TitleStyle.Render("📺 Select Content Type")
+	title := style.TitleStyle.Render("📺 Select Content Type")
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
 	// User info if available
 	if m.userInfo != "" {
-		info := tui.ItemDimStyle.Render("Logged in: " + m.userInfo)
+		info := style.ItemDimStyle.Render("Logged in: " + m.userInfo)
 		b.WriteString(info)
 		b.WriteString("\n\n")
 	}
@@ -107,36 +108,36 @@ func (m *ContentTypeModel) View() string {
 	}
 
 	for i, opt := range m.options {
-		var style lipgloss.Style
+		var s lipgloss.Style
 		if i == m.cursor {
-			style = lipgloss.NewStyle().
-				Background(tui.ColorHighlight).
+			s = lipgloss.NewStyle().
+				Background(style.ColorHighlight).
 				Foreground(lipgloss.Color("230")).
 				Bold(true).
 				Padding(1, 4).
 				Margin(0, 0, 1, 0).
 				Width(30)
 		} else {
-			style = lipgloss.NewStyle().
+			s = lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
-				BorderForeground(tui.ColorMuted).
+				BorderForeground(style.ColorMuted).
 				Padding(1, 4).
 				Margin(0, 0, 1, 0).
 				Width(30)
 		}
 
 		content := icons[i] + "  " + opt.String() + "\n" +
-			tui.ItemDimStyle.Render(descs[i])
+			style.ItemDimStyle.Render(descs[i])
 
-		b.WriteString(style.Render(content))
+		b.WriteString(s.Render(content))
 		b.WriteString("\n")
 	}
 
 	// Help text
-	help := tui.HelpStyle.Render("\n[↑↓] Navigate  [Enter] Select  [1-3] Quick select  [Esc] Back")
+	help := style.HelpStyle.Render("\n[↑↓] Navigate  [Enter] Select  [1-3] Quick select  [Esc] Back")
 	b.WriteString(help)
 
 	// Center the content
-	box := tui.BoxStyle.Render(b.String())
+	box := style.BoxStyle.Render(b.String())
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }

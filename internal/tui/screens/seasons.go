@@ -8,10 +8,10 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/altmueller/xstream-tui/internal/tui"
 	"github.com/altmueller/xstream-tui/internal/tui/components"
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 	"github.com/altmueller/xstream-tui/internal/xc"
 )
 
@@ -173,29 +173,29 @@ func (m *SeasonsModel) View() string {
 	var b strings.Builder
 
 	// Header with series name
-	title := tui.TitleStyle.Render("📺 " + m.series.Name)
+	title := style.TitleStyle.Render("📺 " + m.series.Name)
 	b.WriteString(title)
 	b.WriteString("\n")
 
 	// Series info (plot/rating if available)
 	if m.series.Rating != "" {
-		info := tui.ItemDimStyle.Render("★ " + m.series.Rating)
+		info := style.ItemDimStyle.Render("★ " + m.series.Rating)
 		b.WriteString(info)
 		b.WriteString("\n")
 	}
 
 	// Search bar
 	if m.searching {
-		searchBox := tui.InputFocusedStyle.Render("🔍 " + m.search.View())
+		searchBox := style.InputFocusedStyle.Render("🔍 " + m.search.View())
 		b.WriteString(searchBox)
 	} else {
-		hint := tui.ItemDimStyle.Render("[/] Search")
+		hint := style.ItemDimStyle.Render("[/] Search")
 		b.WriteString(hint)
 	}
 	b.WriteString("\n\n")
 
 	// Seasons header
-	b.WriteString(tui.SubtitleStyle.Render("Seasons"))
+	b.WriteString(style.SubtitleStyle.Render("Seasons"))
 	b.WriteString("\n")
 
 	// Season list
@@ -206,8 +206,8 @@ func (m *SeasonsModel) View() string {
 	b.WriteString(m.list.ScrollInfo())
 
 	// Help text
-	help := tui.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] View Episodes  [/] Search  [Esc] Back")
+	help := style.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] View Episodes  [/] Search  [Esc] Back")
 	b.WriteString(help)
 
-	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
+	return style.AppStyle.Render(b.String())
 }

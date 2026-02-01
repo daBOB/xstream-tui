@@ -7,10 +7,10 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/altmueller/xstream-tui/internal/tui"
 	"github.com/altmueller/xstream-tui/internal/tui/components"
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 	"github.com/altmueller/xstream-tui/internal/xc"
 )
 
@@ -294,21 +294,21 @@ func (m *GlobalSearchModel) View() string {
 	case tui.SeriesContent:
 		icon = ">"
 	}
-	title := tui.TitleStyle.Render(icon + " Global Search: " + m.contentType.String())
+	title := style.TitleStyle.Render(icon + " Global Search: " + m.contentType.String())
 	b.WriteString(title)
 	b.WriteString("\n")
 
 	// Search input (always focused)
-	searchBox := tui.InputFocusedStyle.Render("> " + m.search.View())
+	searchBox := style.InputFocusedStyle.Render("> " + m.search.View())
 	b.WriteString(searchBox)
 	b.WriteString("\n\n")
 
 	// Loading state
 	if m.loading {
-		loadingText := tui.LoadingStyle.Render("Loading content...")
+		loadingText := style.LoadingStyle.Render("Loading content...")
 		b.WriteString(loadingText)
 	} else if !m.loaded {
-		b.WriteString(tui.ItemDimStyle.Render("Initializing..."))
+		b.WriteString(style.ItemDimStyle.Render("Initializing..."))
 	} else {
 		// Results list
 		b.WriteString(m.list.View())
@@ -320,8 +320,8 @@ func (m *GlobalSearchModel) View() string {
 
 	// Help text
 	helpText := "[Enter] Play/Select  [Esc] Close/Clear"
-	help := tui.HelpStyle.Render("\n" + helpText)
+	help := style.HelpStyle.Render("\n" + helpText)
 	b.WriteString(help)
 
-	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
+	return style.AppStyle.Render(b.String())
 }

@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -83,13 +84,13 @@ func (e *ErrorModal) View(width, height int) string {
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("196")).
+		BorderForeground(style.ColorError).
 		Padding(1, 2).
 		Width(maxWidth)
 
-	title := ErrorStyle.Render("⚠ Error")
+	title := style.ErrorStyle.Render("⚠ Error")
 	content := title + "\n\n" + wordWrap(e.message, maxWidth-6) + "\n\n" +
-		HelpStyle.Render("[Enter] Dismiss")
+		style.HelpStyle.Render("[Enter] Dismiss")
 
 	box := boxStyle.Render(content)
 

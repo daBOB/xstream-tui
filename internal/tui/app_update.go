@@ -5,6 +5,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/altmueller/xstream-tui/internal/download"
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 )
 
 // Update handles messages and updates application state.
@@ -146,7 +147,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case SpinnerTickMsg:
 		if a.loading {
-			a.spinnerFrame = (a.spinnerFrame + 1) % len(SpinnerFrames)
+			a.spinnerFrame = (a.spinnerFrame + 1) % len(style.SpinnerFrames)
 			return a, a.spinnerTick()
 		}
 		return a, nil

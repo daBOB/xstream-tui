@@ -11,6 +11,7 @@ import (
 
 	"github.com/altmueller/xstream-tui/internal/tui"
 	"github.com/altmueller/xstream-tui/internal/tui/components"
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 	"github.com/altmueller/xstream-tui/internal/xc"
 )
 
@@ -36,7 +37,7 @@ type SeriesBrowserModel struct {
 func NewSeriesBrowserModel() *SeriesBrowserModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("86"))
+	s.Style = lipgloss.NewStyle().Foreground(style.ColorPrimary)
 
 	return &SeriesBrowserModel{
 		splitView:   components.NewSplitView(0.35),
@@ -162,12 +163,12 @@ func (m *SeriesBrowserModel) Update(msg tea.Msg) tea.Cmd {
 func (m *SeriesBrowserModel) View() string {
 	var b strings.Builder
 
-	title := tui.TitleStyle.Render("📺 " + m.series.Name)
+	title := style.TitleStyle.Render("📺 " + m.series.Name)
 	b.WriteString(title)
 	b.WriteString("\n")
 
 	if m.series.Rating != "" {
-		info := tui.ItemDimStyle.Render("★ " + m.series.Rating)
+		info := style.ItemDimStyle.Render("★ " + m.series.Rating)
 		b.WriteString(info)
 		b.WriteString("\n")
 	}
@@ -177,7 +178,7 @@ func (m *SeriesBrowserModel) View() string {
 		b.WriteString(m.spinner.View() + " Loading series info...")
 		b.WriteString("\n")
 	} else if m.seriesInfo == nil {
-		b.WriteString(tui.ItemDimStyle.Render("No series data"))
+		b.WriteString(style.ItemDimStyle.Render("No series data"))
 	} else {
 		seasonTitle := fmt.Sprintf("Seasons (%d)", m.seasons.Len())
 		episodeTitle := fmt.Sprintf("Episodes (%d)", m.episodes.Len())
@@ -195,7 +196,7 @@ func (m *SeriesBrowserModel) View() string {
 	b.WriteString("\n")
 
 	help := "[Tab/hl] Switch  [↑↓jk] Nav  [Enter] Play  [d] Download  [D] DL Season  [Ctrl+F] Search  [Q] Queue  [Esc] Back"
-	b.WriteString(tui.HelpStyle.Render(help))
+	b.WriteString(style.HelpStyle.Render(help))
 
-	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
+	return style.AppStyle.Render(b.String())
 }

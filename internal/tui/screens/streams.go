@@ -7,10 +7,10 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/altmueller/xstream-tui/internal/tui"
 	"github.com/altmueller/xstream-tui/internal/tui/components"
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 	"github.com/altmueller/xstream-tui/internal/xc"
 )
 
@@ -271,16 +271,16 @@ func (m *StreamsModel) View() string {
 	case tui.SeriesContent:
 		icon = "📺"
 	}
-	title := tui.TitleStyle.Render(icon + " " + m.category.Name)
+	title := style.TitleStyle.Render(icon + " " + m.category.Name)
 	b.WriteString(title)
 	b.WriteString("\n")
 
 	// Search bar
 	if m.searching {
-		searchBox := tui.InputFocusedStyle.Render("🔍 " + m.search.View())
+		searchBox := style.InputFocusedStyle.Render("🔍 " + m.search.View())
 		b.WriteString(searchBox)
 	} else {
-		hint := tui.ItemDimStyle.Render("[/] Search")
+		hint := style.ItemDimStyle.Render("[/] Search")
 		b.WriteString(hint)
 	}
 	b.WriteString("\n\n")
@@ -293,8 +293,8 @@ func (m *StreamsModel) View() string {
 	b.WriteString(m.list.ScrollInfo())
 
 	// Help text
-	help := tui.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] Play  [d] Download  [/] Search  [Ctrl+F] Global  [Q] Queue  [Esc] Back")
+	help := style.HelpStyle.Render("\n[↑↓jk] Navigate  [Enter] Play  [d] Download  [/] Search  [Ctrl+F] Global  [Q] Queue  [Esc] Back")
 	b.WriteString(help)
 
-	return lipgloss.NewStyle().Padding(1, 2).Render(b.String())
+	return style.AppStyle.Render(b.String())
 }
