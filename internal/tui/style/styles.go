@@ -4,15 +4,18 @@ import "github.com/charmbracelet/lipgloss"
 
 // Color palette for consistent theming.
 var (
-	ColorPrimary   = lipgloss.Color("86")  // Cyan - brand color
-	ColorSecondary = lipgloss.Color("205") // Pink - accent
-	ColorSuccess   = lipgloss.Color("42")  // Green
-	ColorError     = lipgloss.Color("196") // Red
-	ColorWarning   = lipgloss.Color("214") // Orange
-	ColorMuted     = lipgloss.Color("241") // Gray
-	ColorHighlight = lipgloss.Color("62")  // Purple - selection bg
-	ColorText      = lipgloss.Color("252") // Light gray - text
-	ColorTextDim   = lipgloss.Color("244") // Dimmer text
+	// Neon Night Palette
+	ColorBackground = lipgloss.Color("#1a1b26") // Deep Blue/Black
+	ColorPrimary    = lipgloss.Color("#7aa2f7") // Neon Blue
+	ColorSecondary  = lipgloss.Color("#bb9af7") // Neon Purple
+	ColorSuccess    = lipgloss.Color("#9ece6a") // Neon Green
+	ColorError      = lipgloss.Color("#f7768e") // Neon Red
+	ColorWarning    = lipgloss.Color("#e0af68") // Neon Orange
+	ColorMuted      = lipgloss.Color("#565f89") // Muted Blue/Gray
+	ColorHighlight  = lipgloss.Color("#2f3549") // Highlight Background
+	ColorText       = lipgloss.Color("#c0caf5") // Main Text (White-ish)
+	ColorTextDim    = lipgloss.Color("#9aa5ce") // Dim Text
+	ColorBorder     = lipgloss.Color("#414868") // Border Color
 )
 
 // Base styles for layout and structure.
@@ -21,9 +24,12 @@ var (
 	AppStyle = lipgloss.NewStyle().Padding(1, 2)
 
 	// TitleStyle for screen headers.
+	// TitleStyle for screen headers.
 	TitleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(ColorPrimary).
+			Background(ColorHighlight).
+			Padding(0, 1). // Add some breathing room
 			MarginBottom(1)
 
 	// SubtitleStyle for secondary headers.
@@ -35,15 +41,20 @@ var (
 // Navigation and selection styles.
 var (
 	// SelectedStyle highlights the currently selected item.
+	// SelectedStyle highlights the currently selected item.
 	SelectedStyle = lipgloss.NewStyle().
-			Background(ColorHighlight).
-			Foreground(lipgloss.Color("230")).
-			Bold(true)
+			Border(lipgloss.RoundedBorder(), false, false, false, true). // Left border indicator
+			BorderForeground(ColorSecondary).
+			Foreground(ColorPrimary).
+			Bold(true).
+			Padding(0, 1)
 
+	// CursorStyle for the selection indicator.
 	// CursorStyle for the selection indicator.
 	CursorStyle = lipgloss.NewStyle().
 			Foreground(ColorSecondary).
-			Bold(true)
+			Bold(true).
+			MarginRight(1)
 
 	// ItemStyle for normal list items.
 	ItemStyle = lipgloss.NewStyle().
@@ -59,8 +70,8 @@ var (
 	// SidebarStyle for the left panel (30% width).
 	SidebarStyle = lipgloss.NewStyle().
 			BorderRight(true).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(ColorMuted).
+			BorderStyle(lipgloss.RoundedBorder()). // Rounded border
+			BorderForeground(ColorBorder).
 			Padding(0, 1)
 
 	// ContentStyle for the main panel (70% width).
@@ -70,7 +81,7 @@ var (
 	// BoxStyle for bordered containers.
 	BoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(ColorMuted).
+			BorderForeground(ColorBorder).
 			Padding(1, 2)
 )
 
@@ -140,7 +151,7 @@ var (
 var (
 	// ModalStyle for modal dialog boxes.
 	ModalStyle = lipgloss.NewStyle().
-			Border(lipgloss.DoubleBorder()).
+			Border(lipgloss.RoundedBorder()).
 			BorderForeground(ColorSecondary).
 			Padding(1, 3).
 			Align(lipgloss.Center)
@@ -156,15 +167,15 @@ var (
 var (
 	// StatusBarStyle for the bottom status bar.
 	StatusBarStyle = lipgloss.NewStyle().
-			Background(lipgloss.Color("236")).
+			Background(ColorHighlight).
 			Foreground(ColorText).
 			Padding(0, 1)
 
 	// StatusBarLabelStyle for labels in the status bar.
 	StatusBarLabelStyle = lipgloss.NewStyle().
-				Foreground(ColorPrimary).
-				Bold(true)
+			Foreground(ColorSecondary). // Use pink for status labels
+			Bold(true)
 )
 
-// Spinner frames for loading animation.
-var SpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	// Spinner frames for loading animation - dots are good, but let's make them consistent
+	var SpinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}

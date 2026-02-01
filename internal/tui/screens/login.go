@@ -231,15 +231,41 @@ func (m *LoginModel) submit() tea.Cmd {
 func (m *LoginModel) View() string {
 	var b strings.Builder
 
-	// Title
-	title := style.TitleStyle.Render("🔐 IPTV Login")
-	b.WriteString(title)
+	// Banner
+	banner := `
+  ___  ___ _____ ______  _____  ___  ___  ___
+  \  \/  //  ___|| ___ \|  _  |/ _ \ |  \/  |
+   >    < \ --. | |_/ /| | | / /_\ \| .  . |
+  /  /\  \ --. \|    / | | | |  _  || |\/| |
+ /  /  \ \/\__/ /| |\ \ \ \_/ /| | | || |  | |
+/__/    \_\____/ \_| \_| \___/ \_| |_/\_|  |_/
+`
+	logo := lipgloss.NewStyle().
+		Foreground(style.ColorPrimary).
+		Bold(true).
+		Render(banner)
+
+	b.WriteString(logo)
+	b.WriteString("\n\n")
+
+	// Subtitle
+	b.WriteString(style.SubtitleStyle.Align(lipgloss.Center).Width(60).Render("Stream your favorite content in your terminal"))
 	b.WriteString("\n\n")
 
 	// Form fields
-	labels := []string{"Server:", "Port:", "Username:", "Password:"}
+	labels := []string{"Server", "Port", "Username", "Password"}
+	
+	// Calculate max label width for alignment
+	maxLabelWidth := 0
+	for _, l := range labels {
+		if len(l) > maxLabelWidth {
+			maxLabelWidth = len(l)
+		}
+	}
+
 	for i, input := range m.inputs {
-		label := style.InputLabelStyle.Render(labels[i])
+		labelStyle := style.InputLabelStyle.Width(maxLabelWidth + 2)
+		label := labelStyle.Render(labels[i])
 
 		var inputStyle lipgloss.Style
 		if i == m.focused {
@@ -249,20 +275,26 @@ func (m *LoginModel) View() string {
 		}
 
 		field := inputStyle.Render(input.View())
-		b.WriteString(label + " " + field + "\n")
+		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Center, label, field))
+		b.WriteString("\n\n") // More spacing between fields
 	}
 
 	// Error message
 	if m.err != "" {
-		b.WriteString("\n")
 		b.WriteString(style.ErrorStyle.Render("✗ " + m.err))
+		b.WriteString("\n")
 	}
 
 	// Help text
-	help := style.HelpStyle.Render("\n[Tab] Next field  [Enter] Submit  [Ctrl+C] Quit")
+	help := style.HelpStyle.Render("[Tab] Next  [Shift+Tab] Prev  [Enter] Submit  [Esc] Quit")
 	b.WriteString(help)
 
 	// Center the form
-	box := style.BoxStyle.Render(b.String())
+	content := b.String()
+	box := style.BoxStyle.
+		BorderForeground(style.ColorBorder).
+		Padding(2, 4).
+		Render(content)
+		
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }

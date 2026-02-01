@@ -40,10 +40,7 @@ func DefaultFancyListStyles() FancyListStyles {
 		Title: lipgloss.NewStyle().
 			Foreground(style.ColorText).
 			Padding(0, 0, 0, 2),
-		TitleSelected: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("229")).
-			Background(style.ColorHighlight).
-			Bold(true).
+		TitleSelected: style.SelectedStyle.
 			Padding(0, 0, 0, 1),
 		Desc: lipgloss.NewStyle().
 			Foreground(style.ColorMuted).
@@ -87,9 +84,10 @@ func (d fancyItemDelegate) Render(w io.Writer, m list.Model, index int, item lis
 
 	// Render cursor and title
 	if selected {
-		s.WriteString("▸ ")
+		s.WriteString("│ ")
 		s.WriteString(d.styles.TitleSelected.Render(title))
 	} else {
+		s.WriteString("  ")
 		s.WriteString(d.styles.Title.Render(title))
 	}
 
