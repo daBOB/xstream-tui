@@ -152,6 +152,7 @@ func (m *Manager) copyWithProgress(ctx context.Context, dst *os.File, src io.Rea
 }
 
 // updateProgress updates item progress and notifies callback.
+// Progress notifications are throttled to ProgressThrottleInterval to avoid UI flooding.
 func (m *Manager) updateProgress(item *Item, bytesRead int64) {
 	m.mu.Lock()
 	item.Downloaded += bytesRead
@@ -161,15 +162,24 @@ func (m *Manager) updateProgress(item *Item, bytesRead int64) {
 	downloaded := item.Downloaded
 	size := item.Size
 	progress := item.Progress
+
+	// Throttle progress notifications
+	now := time.Now()
+	shouldNotify := now.Sub(item.lastProgressTime) >= ProgressThrottleInterval
+	if shouldNotify {
+		item.lastProgressTime = now
+	}
 	m.mu.Unlock()
 
-	m.notifyProgress(ProgressUpdate{
-		ID:         item.ID,
-		Progress:   progress,
-		Downloaded: downloaded,
-		Size:       size,
-		Status:     StatusDownloading,
-	})
+	if shouldNotify {
+		m.notifyProgress(ProgressUpdate{
+			ID:         item.ID,
+			Progress:   progress,
+			Downloaded: downloaded,
+			Size:       size,
+			Status:     StatusDownloading,
+		})
+	}
 }
 
 // notifyProgress calls the progress callback if set.

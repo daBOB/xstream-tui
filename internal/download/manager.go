@@ -44,19 +44,23 @@ func (s Status) String() string {
 	}
 }
 
+// ProgressThrottleInterval limits progress update frequency to avoid UI flooding.
+const ProgressThrottleInterval = 100 * time.Millisecond
+
 // Item represents a download in the queue.
 type Item struct {
-	ID         string
-	Name       string
-	URL        string
-	FilePath   string
-	Status     Status
-	Progress   float64
-	Size       int64
-	Downloaded int64
-	Error      error
-	StartedAt  time.Time
-	cancel     func()
+	ID               string
+	Name             string
+	URL              string
+	FilePath         string
+	Status           Status
+	Progress         float64
+	Size             int64
+	Downloaded       int64
+	Error            error
+	StartedAt        time.Time
+	cancel           func()
+	lastProgressTime time.Time // For throttling progress updates
 }
 
 // ProgressUpdate is sent when download progress changes.

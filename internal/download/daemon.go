@@ -7,8 +7,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// DaemonTickInterval is how often the daemon polls for updates.
-const DaemonTickInterval = 100 * time.Millisecond
+// Daemon tick intervals - adaptive based on activity state.
+const (
+	DaemonTickIntervalActive = 100 * time.Millisecond  // During active downloads
+	DaemonTickIntervalIdle   = 1000 * time.Millisecond // When queue is empty/idle
+)
 
 // DaemonTickMsg signals the daemon to check for updates.
 type DaemonTickMsg struct{}
@@ -24,9 +27,11 @@ type DaemonStatusMsg struct {
 
 // Daemon provides a daemon-style interface for Bubble Tea integration.
 // It uses tick messages to poll the download manager and send status updates.
+// Adaptive polling: 100ms during downloads, 1000ms when idle.
 type Daemon struct {
-	manager *Manager
-	running bool
+	manager     *Manager
+	running     bool
+	wasActive   bool // Track if downloads were active last tick
 }
 
 // NewDaemon creates a new download daemon wrapping the manager.
@@ -44,7 +49,7 @@ func (d *Daemon) Manager() *Manager {
 // Start returns a command that begins the daemon tick loop.
 func (d *Daemon) Start() tea.Cmd {
 	d.running = true
-	return d.tick()
+	return d.tick(false) // Start with idle interval
 }
 
 // Stop stops the daemon.
@@ -53,8 +58,13 @@ func (d *Daemon) Stop() {
 }
 
 // tick returns a command that waits then sends a tick message.
-func (d *Daemon) tick() tea.Cmd {
-	return tea.Tick(DaemonTickInterval, func(t time.Time) tea.Msg {
+// Uses adaptive interval based on download activity.
+func (d *Daemon) tick(active bool) tea.Cmd {
+	interval := DaemonTickIntervalIdle
+	if active {
+		interval = DaemonTickIntervalActive
+	}
+	return tea.Tick(interval, func(t time.Time) tea.Msg {
 		return DaemonTickMsg{}
 	})
 }
@@ -71,8 +81,12 @@ func (d *Daemon) Update(msg tea.Msg) (tea.Msg, tea.Cmd) {
 		// Get current status from manager
 		status := d.getStatus()
 
-		// Continue ticking
-		return status, d.tick()
+		// Determine if we have active downloads or queued items
+		isActive := status.Downloading || status.QueueCount > 0
+		d.wasActive = isActive
+
+		// Continue ticking with adaptive interval
+		return status, d.tick(isActive)
 	}
 	return nil, nil
 }

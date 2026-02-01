@@ -118,6 +118,11 @@ func NewClient(host string, username, password string, opts ...ClientOption) (*C
 		password: password,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				MaxIdleConns:        10,
+				MaxIdleConnsPerHost: 5,
+				IdleConnTimeout:     90 * time.Second,
+			},
 		},
 		retryConfig: DefaultRetryConfig(),
 	}
