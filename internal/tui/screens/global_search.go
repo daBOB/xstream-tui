@@ -227,6 +227,8 @@ func (m *GlobalSearchModel) Update(msg tea.Msg) tea.Cmd {
 		case "pgup", "ctrl+u":
 			m.list.Update(msg)
 			return nil
+		case "d":
+			return m.downloadItem()
 		default:
 			// Update search input (all other keys go to text input)
 			var cmd tea.Cmd
@@ -280,6 +282,33 @@ func (m *GlobalSearchModel) selectItem() tea.Cmd {
 	return nil
 }
 
+func (m *GlobalSearchModel) downloadItem() tea.Cmd {
+	item := m.list.Selected()
+	if item == nil {
+		return nil
+	}
+
+	searchItem, ok := item.(*GlobalSearchItem)
+	if !ok {
+		return nil
+	}
+
+	// Only VOD content can be downloaded
+	if searchItem.itemType == tui.VODContent && searchItem.vodStream != nil {
+		container := searchItem.vodStream.Container
+		if container == "" {
+			container = "mp4"
+		}
+		url := m.client.VODStreamURL(searchItem.vodStream.ID.String(), container)
+		name := searchItem.vodStream.Name + "." + container
+		return func() tea.Msg {
+			return tui.DownloadRequestMsg{Name: name, URL: url}
+		}
+	}
+
+	return nil
+}
+
 // View renders the global search screen.
 func (m *GlobalSearchModel) View() string {
 	var b strings.Builder
@@ -319,7 +348,7 @@ func (m *GlobalSearchModel) View() string {
 	}
 
 	// Help text
-	helpText := "[Enter] Play/Select  [Esc] Close/Clear"
+	helpText := "[Enter] Play/Select  [d] Download  [Esc] Close/Clear"
 	help := style.HelpStyle.Render("\n" + helpText)
 	b.WriteString(help)
 
