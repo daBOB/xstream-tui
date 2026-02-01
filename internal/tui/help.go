@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/altmueller/xstream-tui/internal/tui/style"
+)
 
 // HelpModel manages the help overlay state.
 type HelpModel struct {
@@ -59,7 +63,7 @@ Press ? to close`
 
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
+		BorderForeground(style.ColorHighlight).
 		Padding(1, 2).
 		Width(32)
 

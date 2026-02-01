@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/altmueller/xstream-tui/internal/tui"
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 	"github.com/altmueller/xstream-tui/internal/xc"
 )
 
@@ -231,20 +232,20 @@ func (m *LoginModel) View() string {
 	var b strings.Builder
 
 	// Title
-	title := tui.TitleStyle.Render("🔐 IPTV Login")
+	title := style.TitleStyle.Render("🔐 IPTV Login")
 	b.WriteString(title)
 	b.WriteString("\n\n")
 
 	// Form fields
 	labels := []string{"Server:", "Port:", "Username:", "Password:"}
 	for i, input := range m.inputs {
-		label := tui.InputLabelStyle.Render(labels[i])
+		label := style.InputLabelStyle.Render(labels[i])
 
 		var inputStyle lipgloss.Style
 		if i == m.focused {
-			inputStyle = tui.InputFocusedStyle
+			inputStyle = style.InputFocusedStyle
 		} else {
-			inputStyle = tui.InputBlurredStyle
+			inputStyle = style.InputBlurredStyle
 		}
 
 		field := inputStyle.Render(input.View())
@@ -254,14 +255,14 @@ func (m *LoginModel) View() string {
 	// Error message
 	if m.err != "" {
 		b.WriteString("\n")
-		b.WriteString(tui.ErrorStyle.Render("✗ " + m.err))
+		b.WriteString(style.ErrorStyle.Render("✗ " + m.err))
 	}
 
 	// Help text
-	help := tui.HelpStyle.Render("\n[Tab] Next field  [Enter] Submit  [Ctrl+C] Quit")
+	help := style.HelpStyle.Render("\n[Tab] Next field  [Enter] Submit  [Ctrl+C] Quit")
 	b.WriteString(help)
 
 	// Center the form
-	box := tui.BoxStyle.Render(b.String())
+	box := style.BoxStyle.Render(b.String())
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }

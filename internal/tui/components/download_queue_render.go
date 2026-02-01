@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/altmueller/xstream-tui/internal/download"
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 )
 
 // View renders the download queue as a full-screen view.
@@ -74,13 +75,13 @@ func (d *DownloadQueue) createStyles(contentWidth int) renderStyles {
 	return renderStyles{
 		title: lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("86")).
+			Foreground(style.ColorPrimary).
 			MarginBottom(1),
 		item:     lipgloss.NewStyle().Width(contentWidth),
-		selected: lipgloss.NewStyle().Width(contentWidth).Background(lipgloss.Color("62")).Foreground(lipgloss.Color("230")),
-		dim:      lipgloss.NewStyle().Foreground(lipgloss.Color("241")),
-		success:  lipgloss.NewStyle().Foreground(lipgloss.Color("82")),
-		error:    lipgloss.NewStyle().Foreground(lipgloss.Color("196")),
+		selected: lipgloss.NewStyle().Width(contentWidth).Background(style.ColorHighlight).Foreground(lipgloss.Color("230")),
+		dim:      lipgloss.NewStyle().Foreground(style.ColorMuted),
+		success:  lipgloss.NewStyle().Foreground(style.ColorSuccess),
+		error:    lipgloss.NewStyle().Foreground(style.ColorError),
 	}
 }
 

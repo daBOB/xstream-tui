@@ -26,14 +26,24 @@ const DEFAULT_CONFIG = {
       // Branch matching now returns 'suggested' not 'active'
       order: ['session', 'branch'],
       branchPattern: '(?:feat|fix|chore|refactor|docs)/(?:[^/]+/)?(.+)'
+    },
+    validation: {
+      mode: 'prompt',  // 'auto' | 'prompt' | 'off'
+      minQuestions: 3,
+      maxQuestions: 8,
+      focusAreas: ['assumptions', 'risks', 'tradeoffs', 'architecture']
     }
   },
   paths: {
     docs: 'docs',
     plans: 'plans'
   },
+  docs: {
+    maxLoc: 800  // Maximum lines of code per doc file before warning
+  },
   locale: {
-    responseLanguage: null
+    thinkingLanguage: null,  // Language for reasoning (e.g., "en" for precision)
+    responseLanguage: null   // Language for user-facing output (e.g., "vi")
   },
   trust: {
     passphrase: null,
@@ -44,7 +54,22 @@ const DEFAULT_CONFIG = {
     packageManager: 'auto',
     framework: 'auto'
   },
-  assertions: []
+  skills: {
+    research: {
+      useGemini: true  // Toggle Gemini CLI usage in research skill
+    }
+  },
+  assertions: [],
+  statusline: 'full',
+  hooks: {
+    'session-init': true,
+    'subagent-init': true,
+    'dev-rules-reminder': true,
+    'usage-context-awareness': true,
+    'scout-block': true,
+    'privacy-block': true,
+    'post-edit-simplify-reminder': true
+  }
 };
 
 /**
@@ -139,13 +164,40 @@ function writeSessionState(sessionId, state) {
 }
 
 /**
- * Sanitize slug to prevent path traversal
+ * Characters invalid in filenames across Windows, macOS, Linux
+ * Windows: < > : " / \ | ? *
+ * macOS/Linux: / and null byte
+ * Also includes control characters and other problematic chars
+ */
+const INVALID_FILENAME_CHARS = /[<>:"/\\|?*\x00-\x1f\x7f]/g;
+
+/**
+ * Sanitize slug for safe filesystem usage
+ * - Removes invalid filename characters
+ * - Replaces non-alphanumeric (except hyphen) with hyphen
+ * - Collapses multiple hyphens
+ * - Removes leading/trailing hyphens
+ * - Limits length to prevent filesystem issues
+ *
  * @param {string} slug - Slug to sanitize
- * @returns {string} Sanitized slug
+ * @returns {string} Sanitized slug (empty string if nothing valid remains)
  */
 function sanitizeSlug(slug) {
-  if (!slug) return '';
-  return slug.replace(/[^a-z0-9-]/gi, '-').replace(/-+/g, '-').slice(0, 100);
+  if (!slug || typeof slug !== 'string') return '';
+
+  let sanitized = slug
+    // Remove invalid filename chars first
+    .replace(INVALID_FILENAME_CHARS, '')
+    // Replace any non-alphanumeric (except hyphen) with hyphen
+    .replace(/[^a-z0-9-]/gi, '-')
+    // Collapse multiple consecutive hyphens
+    .replace(/-+/g, '-')
+    // Remove leading/trailing hyphens
+    .replace(/^-+|-+$/g, '')
+    // Limit length (most filesystems support 255, but keep reasonable)
+    .slice(0, 100);
+
+  return sanitized;
 }
 
 /**
@@ -184,21 +236,41 @@ function findMostRecentPlan(plansDir) {
 }
 
 /**
+ * Default timeout for git commands (5 seconds)
+ * Prevents indefinite hangs on network mounts or corrupted repos
+ */
+const DEFAULT_EXEC_TIMEOUT_MS = 5000;
+
+/**
  * Safely execute shell command (internal helper)
  * SECURITY: Only accepts whitelisted git read commands
  * @param {string} cmd - Command to execute
+ * @param {Object} options - Execution options
+ * @param {string} options.cwd - Working directory (optional)
+ * @param {number} options.timeout - Timeout in ms (default: 5000)
  * @returns {string|null} Command output or null
  */
-function execSafe(cmd) {
+function execSafe(cmd, options = {}) {
   // Whitelist of safe read-only commands
-  const allowedCommands = ['git branch --show-current', 'git rev-parse --abbrev-ref HEAD'];
+  const allowedCommands = [
+    'git branch --show-current',
+    'git rev-parse --abbrev-ref HEAD',
+    'git rev-parse --show-toplevel'
+  ];
   if (!allowedCommands.includes(cmd)) {
     return null;
   }
 
+  const { cwd = undefined, timeout = DEFAULT_EXEC_TIMEOUT_MS } = options;
+
   try {
     return require('child_process')
-      .execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+      .execSync(cmd, {
+        encoding: 'utf8',
+        timeout,
+        cwd,
+        stdio: ['pipe', 'pipe', 'pipe']
+      })
       .trim();
   } catch (e) {
     return null;
@@ -228,11 +300,15 @@ function resolvePlanPath(sessionId, config) {
       case 'session': {
         const state = readSessionState(sessionId);
         if (state?.activePlan) {
-          // Only use session state if CWD matches session origin (monorepo support)
-          if (state.sessionOrigin && state.sessionOrigin !== process.cwd()) {
-            break;  // Fall through to branch
+          // Issue #335: Handle both absolute and relative paths
+          // - Absolute paths (from updated set-active-plan.cjs): use as-is
+          // - Relative paths (legacy): resolve using sessionOrigin if available
+          let resolvedPath = state.activePlan;
+          if (!path.isAbsolute(resolvedPath) && state.sessionOrigin) {
+            // Resolve relative path using session origin directory
+            resolvedPath = path.join(state.sessionOrigin, resolvedPath);
           }
-          return { path: state.activePlan, resolvedBy: 'session' };
+          return { path: resolvedPath, resolvedBy: 'session' };
         }
         break;
       }
@@ -262,15 +338,74 @@ function resolvePlanPath(sessionId, config) {
 }
 
 /**
- * Sanitize path values (prevent path traversal)
+ * Normalize path value (trim, remove trailing slashes, handle empty)
+ * @param {string} pathValue - Path to normalize
+ * @returns {string|null} Normalized path or null if invalid
+ */
+function normalizePath(pathValue) {
+  if (!pathValue || typeof pathValue !== 'string') return null;
+
+  // Trim whitespace
+  let normalized = pathValue.trim();
+
+  // Empty after trim = invalid
+  if (!normalized) return null;
+
+  // Remove trailing slashes (but keep root "/" or "C:\")
+  normalized = normalized.replace(/[/\\]+$/, '');
+
+  // If it became empty (was just slashes), return null
+  if (!normalized) return null;
+
+  return normalized;
+}
+
+/**
+ * Check if path is absolute
+ * @param {string} pathValue - Path to check
+ * @returns {boolean} True if absolute path
+ */
+function isAbsolutePath(pathValue) {
+  if (!pathValue) return false;
+  // Unix absolute: starts with /
+  // Windows absolute: starts with drive letter (C:\) or UNC (\\)
+  return path.isAbsolute(pathValue);
+}
+
+/**
+ * Sanitize path values
+ * - Normalizes path (trim, remove trailing slashes)
+ * - Allows absolute paths (for consolidated plans use case)
+ * - Prevents obvious security issues (null bytes, etc.)
+ *
+ * @param {string} pathValue - Path to sanitize
+ * @param {string} projectRoot - Project root for relative path resolution
+ * @returns {string|null} Sanitized path or null if invalid
  */
 function sanitizePath(pathValue, projectRoot) {
-  if (!pathValue || typeof pathValue !== 'string') return pathValue;
-  const resolved = path.resolve(projectRoot, pathValue);
+  // Normalize first
+  const normalized = normalizePath(pathValue);
+  if (!normalized) return null;
+
+  // Block null bytes and other dangerous chars
+  if (/[\x00]/.test(normalized)) return null;
+
+  // Allow absolute paths (user explicitly wants consolidated plans elsewhere)
+  if (isAbsolutePath(normalized)) {
+    return normalized;
+  }
+
+  // For relative paths, resolve and validate
+  const resolved = path.resolve(projectRoot, normalized);
+
+  // Prevent path traversal outside project (../ attacks)
+  // But allow if user explicitly set absolute path
   if (!resolved.startsWith(projectRoot + path.sep) && resolved !== projectRoot) {
+    // This is a relative path trying to escape - block it
     return null;
   }
-  return pathValue;
+
+  return normalized;
 }
 
 /**
@@ -288,6 +423,11 @@ function sanitizeConfig(config, projectRoot) {
     result.plan.resolution = {
       ...DEFAULT_CONFIG.plan.resolution,
       ...result.plan.resolution
+    };
+    // Merge validation defaults
+    result.plan.validation = {
+      ...DEFAULT_CONFIG.plan.validation,
+      ...result.plan.validation
     };
   }
 
@@ -343,7 +483,8 @@ function loadConfig(options = {}) {
     // Build result with optional sections
     const result = {
       plan: merged.plan || DEFAULT_CONFIG.plan,
-      paths: merged.paths || DEFAULT_CONFIG.paths
+      paths: merged.paths || DEFAULT_CONFIG.paths,
+      docs: merged.docs || DEFAULT_CONFIG.docs
     };
 
     if (includeLocale) {
@@ -357,6 +498,16 @@ function loadConfig(options = {}) {
     if (includeAssertions) {
       result.assertions = merged.assertions || [];
     }
+    // Coding level for output style selection (-1 to 5, default: -1 = disabled)
+    // -1 = disabled (no injection, saves tokens)
+    // 0-5 = inject corresponding level guidelines
+    result.codingLevel = merged.codingLevel ?? -1;
+    // Skills configuration
+    result.skills = merged.skills || DEFAULT_CONFIG.skills;
+    // Hooks configuration
+    result.hooks = merged.hooks || DEFAULT_CONFIG.hooks;
+    // Statusline mode
+    result.statusline = merged.statusline || 'full';
 
     return sanitizeConfig(result, projectRoot);
   } catch (e) {
@@ -370,7 +521,11 @@ function loadConfig(options = {}) {
 function getDefaultConfig(includeProject = true, includeAssertions = true, includeLocale = true) {
   const result = {
     plan: { ...DEFAULT_CONFIG.plan },
-    paths: { ...DEFAULT_CONFIG.paths }
+    paths: { ...DEFAULT_CONFIG.paths },
+    docs: { ...DEFAULT_CONFIG.docs },
+    codingLevel: -1,  // Default: disabled (no injection, saves tokens)
+    skills: { ...DEFAULT_CONFIG.skills },
+    statusline: 'full'
   };
   if (includeLocale) {
     result.locale = { ...DEFAULT_CONFIG.locale };
@@ -386,10 +541,15 @@ function getDefaultConfig(includeProject = true, includeAssertions = true, inclu
 
 /**
  * Escape shell special characters for env file values
+ * Handles: backslash, double quote, dollar sign, backtick
  */
 function escapeShellValue(str) {
   if (typeof str !== 'string') return str;
-  return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$');
+  return str
+    .replace(/\\/g, '\\\\')   // Backslash first
+    .replace(/"/g, '\\"')     // Double quotes
+    .replace(/\$/g, '\\$')    // Dollar sign
+    .replace(/`/g, '\\`');    // Backticks (command substitution)
 }
 
 /**
@@ -411,15 +571,29 @@ function writeEnv(envFile, key, value) {
  * @param {string|null} resolvedBy - How plan was resolved ('session'|'branch'|null)
  * @param {Object} planConfig - Plan configuration
  * @param {Object} pathsConfig - Paths configuration
- * @returns {string} Reports path
+ * @param {string|null} baseDir - Optional base directory for absolute path resolution
+ * @returns {string} Reports path (absolute if baseDir provided, relative otherwise)
  */
-function getReportsPath(planPath, resolvedBy, planConfig, pathsConfig) {
+function getReportsPath(planPath, resolvedBy, planConfig, pathsConfig, baseDir = null) {
+  const reportsDir = normalizePath(planConfig?.reportsDir) || 'reports';
+  const plansDir = normalizePath(pathsConfig?.plans) || 'plans';
+
+  let reportPath;
   // Only use plan-specific reports path if explicitly active (session state)
-  if (planPath && resolvedBy === 'session') {
-    return `${planPath}/${planConfig.reportsDir}/`;
+  // Issue #327: Validate normalized path to prevent whitespace-only paths creating invalid directories
+  const normalizedPlanPath = planPath && resolvedBy === 'session' ? normalizePath(planPath) : null;
+  if (normalizedPlanPath) {
+    reportPath = `${normalizedPlanPath}/${reportsDir}`;
+  } else {
+    // Default path for no plan or suggested (branch-matched) plans
+    reportPath = `${plansDir}/${reportsDir}`;
   }
-  // Default path for no plan or suggested (branch-matched) plans
-  return `${pathsConfig.plans}/${planConfig.reportsDir}/`;
+
+  // Return absolute path if baseDir provided
+  if (baseDir) {
+    return path.join(baseDir, reportPath);
+  }
+  return reportPath + '/';
 }
 
 /**
@@ -447,15 +621,179 @@ function extractIssueFromBranch(branch) {
   return null;
 }
 
+/**
+ * Format date according to dateFormat config
+ * Supports: YYMMDD, YYMMDD-HHmm, YYYYMMDD, etc.
+ * @param {string} format - Date format string
+ * @returns {string} Formatted date
+ */
+function formatDate(format) {
+  const now = new Date();
+  const pad = (n, len = 2) => String(n).padStart(len, '0');
+
+  const tokens = {
+    'YYYY': now.getFullYear(),
+    'YY': String(now.getFullYear()).slice(-2),
+    'MM': pad(now.getMonth() + 1),
+    'DD': pad(now.getDate()),
+    'HH': pad(now.getHours()),
+    'mm': pad(now.getMinutes()),
+    'ss': pad(now.getSeconds())
+  };
+
+  let result = format;
+  for (const [token, value] of Object.entries(tokens)) {
+    result = result.replace(token, value);
+  }
+  return result;
+}
+
+/**
+ * Validate naming pattern result
+ * Ensures pattern resolves to a usable directory name
+ *
+ * @param {string} pattern - Resolved naming pattern
+ * @returns {{ valid: boolean, error?: string }} Validation result
+ */
+function validateNamingPattern(pattern) {
+  if (!pattern || typeof pattern !== 'string') {
+    return { valid: false, error: 'Pattern is empty or not a string' };
+  }
+
+  // After removing {slug} placeholder, should still have content
+  const withoutSlug = pattern.replace(/\{slug\}/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (!withoutSlug) {
+    return { valid: false, error: 'Pattern resolves to empty after removing {slug}' };
+  }
+
+  // Check for remaining unresolved placeholders (besides {slug})
+  const unresolvedMatch = withoutSlug.match(/\{[^}]+\}/);
+  if (unresolvedMatch) {
+    return { valid: false, error: `Unresolved placeholder: ${unresolvedMatch[0]}` };
+  }
+
+  // Pattern must contain {slug} for agents to substitute
+  if (!pattern.includes('{slug}')) {
+    return { valid: false, error: 'Pattern must contain {slug} placeholder' };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Resolve naming pattern with date and optional issue prefix
+ * Keeps {slug} as placeholder for agents to substitute
+ *
+ * Example: namingFormat="{date}-{issue}-{slug}", dateFormat="YYMMDD-HHmm", issue="GH-88"
+ * Returns: "251212-1830-GH-88-{slug}" (if issue exists)
+ * Returns: "251212-1830-{slug}" (if no issue)
+ *
+ * @param {Object} planConfig - Plan configuration
+ * @param {string|null} gitBranch - Current git branch (for issue extraction)
+ * @returns {string} Resolved naming pattern with {slug} placeholder
+ */
+function resolveNamingPattern(planConfig, gitBranch) {
+  const { namingFormat, dateFormat, issuePrefix } = planConfig;
+  const formattedDate = formatDate(dateFormat);
+
+  // Try to extract issue ID from branch name
+  const issueId = extractIssueFromBranch(gitBranch);
+  const fullIssue = issueId && issuePrefix ? `${issuePrefix}${issueId}` : null;
+
+  // Build pattern by substituting {date} and {issue}, keep {slug}
+  let pattern = namingFormat;
+  pattern = pattern.replace('{date}', formattedDate);
+
+  if (fullIssue) {
+    pattern = pattern.replace('{issue}', fullIssue);
+  } else {
+    // Remove {issue} and any trailing/leading dash
+    pattern = pattern.replace(/-?\{issue\}-?/, '-').replace(/--+/g, '-');
+  }
+
+  // Clean up the result:
+  // - Remove leading/trailing hyphens
+  // - Collapse multiple hyphens (except around {slug})
+  pattern = pattern
+    .replace(/^-+/, '')           // Remove leading hyphens
+    .replace(/-+$/, '')           // Remove trailing hyphens
+    .replace(/-+(\{slug\})/g, '-$1')  // Single hyphen before {slug}
+    .replace(/(\{slug\})-+/g, '$1-')  // Single hyphen after {slug}
+    .replace(/--+/g, '-');        // Collapse other multiple hyphens
+
+  // Validate the resulting pattern
+  const validation = validateNamingPattern(pattern);
+  if (!validation.valid) {
+    // Log warning but return pattern anyway (fail-safe)
+    if (process.env.CK_DEBUG) {
+      console.error(`[ck-config] Warning: ${validation.error}`);
+    }
+  }
+
+  return pattern;
+}
+
+/**
+ * Get current git branch (safe execution)
+ * @param {string|null} cwd - Working directory to run git command from (optional)
+ * @returns {string|null} Current branch name or null
+ */
+function getGitBranch(cwd = null) {
+  return execSafe('git branch --show-current', { cwd: cwd || undefined });
+}
+
+/**
+ * Get git repository root directory
+ * @param {string|null} cwd - Working directory to run git command from (optional)
+ * @returns {string|null} Git root absolute path or null if not in git repo
+ */
+function getGitRoot(cwd = null) {
+  return execSafe('git rev-parse --show-toplevel', { cwd: cwd || undefined });
+}
+
+/**
+ * Extract task list ID from plan resolution for Claude Code Tasks coordination
+ * Only returns ID for session-resolved plans (explicitly active, not branch-suggested)
+ *
+ * Cross-platform: path.basename() handles both Unix/Windows separators
+ *
+ * @param {{ path: string|null, resolvedBy: 'session'|'branch'|null }} resolved - Plan resolution result
+ * @returns {string|null} Task list ID (plan directory name) or null
+ */
+function extractTaskListId(resolved) {
+  if (!resolved || resolved.resolvedBy !== 'session' || !resolved.path) {
+    return null;
+  }
+  return path.basename(resolved.path);
+}
+
+/**
+ * Check if a hook is enabled in config
+ * Returns true if hook is not defined (default enabled)
+ *
+ * @param {string} hookName - Hook name (script basename without .cjs)
+ * @returns {boolean} Whether hook is enabled
+ */
+function isHookEnabled(hookName) {
+  const config = loadConfig({ includeProject: false, includeAssertions: false, includeLocale: false });
+  const hooks = config.hooks || {};
+  // Return true if undefined (default enabled), otherwise return the boolean value
+  return hooks[hookName] !== false;
+}
+
 module.exports = {
   CONFIG_PATH,
   LOCAL_CONFIG_PATH,
   GLOBAL_CONFIG_PATH,
   DEFAULT_CONFIG,
+  INVALID_FILENAME_CHARS,
   deepMerge,
   loadConfigFromPath,
   loadConfig,
+  normalizePath,
+  isAbsolutePath,
   sanitizePath,
+  sanitizeSlug,
   sanitizeConfig,
   escapeShellValue,
   writeEnv,
@@ -467,5 +805,12 @@ module.exports = {
   findMostRecentPlan,
   getReportsPath,
   formatIssueId,
-  extractIssueFromBranch
+  extractIssueFromBranch,
+  formatDate,
+  validateNamingPattern,
+  resolveNamingPattern,
+  getGitBranch,
+  getGitRoot,
+  extractTaskListId,
+  isHookEnabled
 };

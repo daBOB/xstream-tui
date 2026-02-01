@@ -5,7 +5,10 @@
     "issuePrefix": "GH-",
     "reportsDir": "reports",
     "resolution": {
-      "order": ["session", "branch"],
+      "order": [
+        "session",
+        "branch"
+      ],
       "branchPattern": "(?:feat|fix|chore|refactor|docs)/(?:[^/]+/)?(.+)"
     }
   },
@@ -25,5 +28,18 @@
     "packageManager": "auto",
     "framework": "auto"
   },
-  "assertions": []
+  "assertions": [],
+  "kits": {
+    "ClaudeKit Engineer": {
+      "installedSettings": {
+        "hooks": [
+          "node $HOME/.claude/hooks/usage-context-awareness.cjs",
+          "node $HOME/.claude/hooks/descriptive-name.cjs",
+          "node $HOME/.claude/hooks/privacy-block.cjs",
+          "node $HOME/.claude/hooks/post-edit-simplify-reminder.cjs"
+        ],
+        "mcpServers": []
+      }
+    }
+  }
 }

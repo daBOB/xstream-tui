@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -90,37 +91,37 @@ func (a *App) renderScreen() string {
 
 // renderPlaceholder renders a fallback placeholder view.
 func (a *App) renderPlaceholder() string {
-	style := lipgloss.NewStyle().
+	s := lipgloss.NewStyle().
 		Width(a.width).
 		Height(a.height).
 		Align(lipgloss.Center, lipgloss.Center)
 
-	content := TitleStyle.Render("xstream-tui") + "\n\n" +
-		ItemDimStyle.Render("Press 'q' to quit")
+	content := style.TitleStyle.Render("xstream-tui") + "\n\n" +
+		style.ItemDimStyle.Render("Press 'q' to quit")
 
-	return style.Render(content)
+	return s.Render(content)
 }
 
 // renderLoading renders the loading spinner view.
 func (a *App) renderLoading() string {
-	style := lipgloss.NewStyle().
+	s := lipgloss.NewStyle().
 		Width(a.width).
 		Height(a.height).
 		Align(lipgloss.Center, lipgloss.Center)
 
-	spinner := SpinnerFrames[a.spinnerFrame]
+	spinner := style.SpinnerFrames[a.spinnerFrame]
 	msg := a.loadingMsg
 	if msg == "" {
 		msg = "Loading..."
 	}
 
-	content := LoadingStyle.Render(spinner + " " + msg)
-	return style.Render(content)
+	content := style.LoadingStyle.Render(spinner + " " + msg)
+	return s.Render(content)
 }
 
 // renderWithError renders content with an error bar at the bottom.
 func (a *App) renderWithError(content string) string {
-	errorBar := ErrorStyle.Render("⚠ " + a.errorMsg + "  [Esc] Dismiss")
+	errorBar := style.ErrorStyle.Render("⚠ " + a.errorMsg + "  [Esc] Dismiss")
 	errorBar = lipgloss.NewStyle().
 		Width(a.width).
 		Background(lipgloss.Color("52")).
@@ -142,12 +143,12 @@ func (a *App) renderStatusBar() string {
 
 	if a.userInfo.Username != "" {
 		leftParts = append(leftParts,
-			StatusBarLabelStyle.Render("User: ")+a.userInfo.Username)
+			style.StatusBarLabelStyle.Render("User: ")+a.userInfo.Username)
 	}
 
 	if a.screen == CategoriesScreen || a.screen == StreamsScreen {
 		leftParts = append(leftParts,
-			StatusBarLabelStyle.Render("Type: ")+a.currentType.String())
+			style.StatusBarLabelStyle.Render("Type: ")+a.currentType.String())
 	}
 
 	left := strings.Join(leftParts, "  │  ")
@@ -155,7 +156,7 @@ func (a *App) renderStatusBar() string {
 	var right string
 	expDate := a.userInfo.ExpDate.String()
 	if expDate != "" && expDate != "0" {
-		right = StatusBarLabelStyle.Render("Expires: ") + expDate
+		right = style.StatusBarLabelStyle.Render("Expires: ") + expDate
 	}
 
 	leftLen := lipgloss.Width(left)
@@ -169,5 +170,5 @@ func (a *App) renderStatusBar() string {
 
 	content := left + strings.Repeat(" ", padding) + right
 
-	return StatusBarStyle.Width(a.width).Render(content)
+	return style.StatusBarStyle.Width(a.width).Render(content)
 }

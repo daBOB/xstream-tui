@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -37,18 +38,18 @@ type FancyListStyles struct {
 func DefaultFancyListStyles() FancyListStyles {
 	return FancyListStyles{
 		Title: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")).
+			Foreground(style.ColorText).
 			Padding(0, 0, 0, 2),
 		TitleSelected: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("229")).
-			Background(lipgloss.Color("57")).
+			Background(style.ColorHighlight).
 			Bold(true).
 			Padding(0, 0, 0, 1),
 		Desc: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(style.ColorMuted).
 			Padding(0, 0, 0, 4),
 		DescSelected: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245")).
+			Foreground(style.ColorTextDim).
 			Padding(0, 0, 0, 3),
 		FilterMatch: lipgloss.NewStyle().
 			Underline(true),
@@ -138,22 +139,22 @@ func NewFancyList(title string, showDesc bool) *FancyList {
 
 	// Style the list
 	l.Styles.Title = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("86")).
+		Foreground(style.ColorPrimary).
 		Bold(true).
 		MarginBottom(1)
 
 	l.Styles.FilterPrompt = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205"))
+		Foreground(style.ColorSecondary)
 
 	l.Styles.FilterCursor = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205"))
+		Foreground(style.ColorSecondary)
 
 	l.Styles.StatusBar = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
+		Foreground(style.ColorMuted).
 		MarginTop(1)
 
 	l.Styles.NoItems = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
+		Foreground(style.ColorMuted).
 		Italic(true)
 
 	return &FancyList{

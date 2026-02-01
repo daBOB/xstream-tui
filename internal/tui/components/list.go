@@ -4,6 +4,7 @@ package components
 import (
 	"strings"
 
+	"github.com/altmueller/xstream-tui/internal/tui/style"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -40,13 +41,13 @@ func NewVirtualList() *VirtualList {
 		items:    make([]ListItem, 0),
 		filtered: make([]int, 0),
 		selectedStyle: lipgloss.NewStyle().
-			Background(lipgloss.Color("62")).
+			Background(style.ColorHighlight).
 			Foreground(lipgloss.Color("230")).
 			Bold(true),
 		normalStyle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("252")),
+			Foreground(style.ColorText),
 		dimStyle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")),
+			Foreground(style.ColorMuted),
 	}
 }
 

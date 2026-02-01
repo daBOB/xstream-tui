@@ -1,34 +1,47 @@
 #!/usr/bin/env node
-
 /**
- * scout-block.js - Cross-platform hook dispatcher
+ * scout-block.cjs - Cross-platform hook for blocking directory access
  *
  * Blocks access to directories listed in .claude/.ckignore
- * (defaults: node_modules, __pycache__, .git, dist, build)
+ * Uses gitignore-spec compliant pattern matching via 'ignore' package
  *
  * Blocking Rules:
  * - File paths: Blocks any file_path/path/pattern containing blocked directories
  * - Bash commands: Blocks directory access (cd, ls, cat, etc.) but ALLOWS build commands
- *   - Blocked: cd node_modules, ls build/, cat dist/file.js
- *   - Allowed: npm build, pnpm build, yarn build, npm run build
+ *   - Blocked: cd node_modules, ls packages/web/node_modules, cat dist/file.js
+ *   - Allowed: npm build, go build, cargo build, make, mvn, gradle, docker build, kubectl, terraform
  *
  * Configuration:
  * - Edit .claude/.ckignore to customize blocked patterns (one per line, # for comments)
- *
- * Platform Detection:
- * - Windows (win32): Uses PowerShell via scout-block.ps1
- * - Unix (linux/darwin): Uses Bash via scout-block.sh
- * - WSL: Automatically detects and uses bash implementation
+ * - Supports negation patterns (!) to allow specific paths
  *
  * Exit Codes:
  * - 0: Command allowed
- * - 2: Command blocked or error occurred
+ * - 2: Command blocked
+ *
+ * Core logic extracted to lib/scout-checker.cjs for OpenCode plugin reuse.
  */
 
-const { execSync } = require('child_process');
-const path = require('path');
 const fs = require('fs');
-// __dirname and __filename are already available in CommonJS
+const path = require('path');
+
+// Import shared scout checking logic
+const {
+  checkScoutBlock,
+  isBuildCommand,
+  isVenvExecutable,
+  isAllowedCommand
+} = require('./lib/scout-checker.cjs');
+const { isHookEnabled } = require('./lib/ck-config-utils.cjs');
+
+// Early exit if hook disabled in config
+if (!isHookEnabled('scout-block')) {
+  process.exit(0);
+}
+
+// Import formatters (kept local as they're Claude-specific output)
+const { formatBlockedError } = require('./scout-block/error-formatter.cjs');
+const { formatBroadPatternError } = require('./scout-block/broad-pattern-detector.cjs');
 
 try {
   // Read stdin synchronously
@@ -40,61 +53,71 @@ try {
     process.exit(2);
   }
 
-  // Validate JSON structure (basic check)
+  // Parse JSON
+  let data;
   try {
-    const data = JSON.parse(hookInput);
-    if (!data.tool_input || typeof data.tool_input !== 'object') {
-      console.error('ERROR: Invalid JSON structure');
-      process.exit(2);
-    }
+    data = JSON.parse(hookInput);
   } catch (parseError) {
-    console.error('ERROR: JSON parse failed:', parseError.message);
+    // Fail-open for unparseable input
+    console.error('WARN: JSON parse failed, allowing operation');
+    process.exit(0);
+  }
+
+  // Validate structure
+  if (!data.tool_input || typeof data.tool_input !== 'object') {
+    // Fail-open for invalid structure
+    console.error('WARN: Invalid JSON structure, allowing operation');
+    process.exit(0);
+  }
+
+  const toolInput = data.tool_input;
+  const toolName = data.tool_name || 'unknown';
+  const claudeDir = path.dirname(__dirname); // Go up from hooks/ to .claude/
+
+  // Use shared scout checker
+  const result = checkScoutBlock({
+    toolName,
+    toolInput,
+    options: {
+      claudeDir,
+      ckignorePath: path.join(claudeDir, '.ckignore'),
+      checkBroadPatterns: true
+    }
+  });
+
+  // Handle allowed commands
+  if (result.isAllowedCommand) {
+    process.exit(0);
+  }
+
+  // Handle broad pattern blocks
+  if (result.blocked && result.isBroadPattern) {
+    const errorMsg = formatBroadPatternError({
+      blocked: true,
+      reason: result.reason,
+      suggestions: result.suggestions
+    }, claudeDir);
+    console.error(errorMsg);
     process.exit(2);
   }
 
-  // Determine platform
-  const platform = process.platform;
-  const scriptDir = __dirname;
-
-  if (platform === 'win32') {
-    // Windows: Use PowerShell implementation
-    const psScript = path.join(scriptDir, 'scout-block', 'scout-block.ps1');
-
-    // Check if PowerShell script exists
-    if (!fs.existsSync(psScript)) {
-      console.error(`ERROR: PowerShell script not found: ${psScript}`);
-      process.exit(2);
-    }
-
-    // Execute PowerShell script with stdin piped
-    execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${psScript}"`, {
-      input: hookInput,
-      stdio: ['pipe', 'inherit', 'inherit'],
-      encoding: 'utf-8'
+  // Handle pattern blocks
+  if (result.blocked) {
+    const errorMsg = formatBlockedError({
+      path: result.path,
+      pattern: result.pattern,
+      tool: toolName,
+      claudeDir: claudeDir
     });
-  } else {
-    // Unix (Linux, macOS, WSL): Use bash implementation
-    const bashScript = path.join(scriptDir, 'scout-block', 'scout-block.sh');
-
-    // Check if bash script exists
-    if (!fs.existsSync(bashScript)) {
-      console.error(`ERROR: Bash script not found: ${bashScript}`);
-      process.exit(2);
-    }
-
-    // Execute bash script with stdin piped
-    execSync(`bash "${bashScript}"`, {
-      input: hookInput,
-      stdio: ['pipe', 'inherit', 'inherit'],
-      encoding: 'utf-8'
-    });
+    console.error(errorMsg);
+    process.exit(2);
   }
+
+  // All paths allowed
+  process.exit(0);
+
 } catch (error) {
-  // Log error details for debugging
-  if (error.message) {
-    console.error('ERROR:', error.message);
-  }
-
-  // Exit with error code from child process, or 2 if undefined
-  process.exit(error.status || 2);
+  // Fail-open for unexpected errors
+  console.error('WARN: Hook error, allowing operation -', error.message);
+  process.exit(0);
 }
