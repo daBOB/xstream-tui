@@ -102,14 +102,15 @@ func (m *Manager) SetProgressCallback(cb func(ProgressUpdate)) {
 }
 
 // Add adds a new download to the queue.
-func (m *Manager) Add(name, urlStr string) string {
+func (m *Manager) Add(name, urlStr string) error {
 	return m.AddWithPath(name, urlStr, "")
 }
 
 // AddWithPath adds a download with optional subpath.
-func (m *Manager) AddWithPath(name, urlStr, subPath string) string {
+// Returns an error if the URL is invalid.
+func (m *Manager) AddWithPath(name, urlStr, subPath string) error {
 	if err := validateURL(urlStr); err != nil {
-		return ""
+		return err
 	}
 
 	m.mu.Lock()
@@ -139,7 +140,7 @@ func (m *Manager) AddWithPath(name, urlStr, subPath string) string {
 	m.queue = append(m.queue, item)
 	go m.processQueue()
 
-	return id
+	return nil
 }
 
 // validateURL checks that URL uses http or https scheme.

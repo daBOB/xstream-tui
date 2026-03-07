@@ -21,15 +21,15 @@ type App struct {
 	width    int
 	height   int
 
-	// Screen models - using interface{} to avoid circular imports
-	login         interface{}
-	contentType   interface{}
-	categories    interface{}
-	streams       interface{}
-	seasons       interface{}
-	episodes      interface{}
-	seriesBrowser interface{}
-	globalSearch  interface{}
+	// Screen models - typed interfaces defined in app_interfaces.go
+	login         loginScreen
+	contentType   contentTypeScreen
+	categories    categoriesScreen
+	streams       streamsScreen
+	seasons       seasonsScreen
+	episodes      episodesScreen
+	seriesBrowser seriesBrowserScreen
+	globalSearch  globalSearchScreen
 
 	// Current series for episodes screen
 	currentSeries         xc.Series
@@ -82,42 +82,42 @@ func (a *App) SetProgram(p *tea.Program) {
 }
 
 // SetLoginScreen injects the login screen model.
-func (a *App) SetLoginScreen(m interface{}) {
+func (a *App) SetLoginScreen(m loginScreen) {
 	a.login = m
 }
 
 // SetContentTypeScreen injects the content type screen model.
-func (a *App) SetContentTypeScreen(m interface{}) {
+func (a *App) SetContentTypeScreen(m contentTypeScreen) {
 	a.contentType = m
 }
 
 // SetCategoriesScreen injects the categories screen model.
-func (a *App) SetCategoriesScreen(m interface{}) {
+func (a *App) SetCategoriesScreen(m categoriesScreen) {
 	a.categories = m
 }
 
 // SetStreamsScreen injects the streams screen model.
-func (a *App) SetStreamsScreen(m interface{}) {
+func (a *App) SetStreamsScreen(m streamsScreen) {
 	a.streams = m
 }
 
 // SetSeasonsScreen injects the seasons screen model.
-func (a *App) SetSeasonsScreen(m interface{}) {
+func (a *App) SetSeasonsScreen(m seasonsScreen) {
 	a.seasons = m
 }
 
 // SetEpisodesScreen injects the episodes screen model.
-func (a *App) SetEpisodesScreen(m interface{}) {
+func (a *App) SetEpisodesScreen(m episodesScreen) {
 	a.episodes = m
 }
 
 // SetSeriesBrowserScreen injects the series browser screen model.
-func (a *App) SetSeriesBrowserScreen(m interface{}) {
+func (a *App) SetSeriesBrowserScreen(m seriesBrowserScreen) {
 	a.seriesBrowser = m
 }
 
 // SetGlobalSearchScreen injects the global search screen model.
-func (a *App) SetGlobalSearchScreen(m interface{}) {
+func (a *App) SetGlobalSearchScreen(m globalSearchScreen) {
 	a.globalSearch = m
 }
 
@@ -125,14 +125,14 @@ func (a *App) SetGlobalSearchScreen(m interface{}) {
 func (a *App) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
-	if s, ok := a.login.(loginScreen); ok {
+	if a.login != nil {
 		// Try auto-login if env vars are complete
-		if autoCmd := s.AutoLogin(); autoCmd != nil {
+		if autoCmd := a.login.AutoLogin(); autoCmd != nil {
 			a.loading = true
 			a.loadingMsg = "Logging in..."
 			cmds = append(cmds, autoCmd, a.spinnerTick())
 		} else {
-			cmds = append(cmds, s.Focus())
+			cmds = append(cmds, a.login.Focus())
 		}
 	}
 

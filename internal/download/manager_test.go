@@ -22,9 +22,8 @@ func TestNewManager(t *testing.T) {
 func TestAddToQueue(t *testing.T) {
 	m := NewManager("/tmp/test-downloads")
 
-	id := m.Add("test-file.mp4", "http://example.com/file.mp4")
-	if id == "" {
-		t.Error("Add returned empty ID")
+	if err := m.Add("test-file.mp4", "http://example.com/file.mp4"); err != nil {
+		t.Fatalf("Add returned error: %v", err)
 	}
 
 	queue := m.Queue()
@@ -94,7 +93,9 @@ func TestDownloadWithServer(t *testing.T) {
 	})
 
 	// Add download
-	id := m.Add("test.txt", server.URL)
+	if err := m.Add("test.txt", server.URL); err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
 
 	// Wait for download to complete
 	time.Sleep(500 * time.Millisecond)
@@ -117,10 +118,8 @@ func TestDownloadWithServer(t *testing.T) {
 	// Check queue status
 	queue := m.Queue()
 	for _, item := range queue {
-		if item.ID == id {
-			if item.Status != StatusCompleted {
-				t.Errorf("expected status Completed, got %s", item.Status.String())
-			}
+		if item.Status != StatusCompleted {
+			t.Errorf("expected status Completed, got %s", item.Status.String())
 		}
 	}
 }
@@ -139,13 +138,15 @@ func TestCancel(t *testing.T) {
 	tmpDir := t.TempDir()
 	m := NewManager(tmpDir)
 
-	id := m.Add("slow.bin", server.URL)
+	if err := m.Add("slow.bin", server.URL); err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
 
 	// Wait for download to start
 	time.Sleep(100 * time.Millisecond)
 
-	// Cancel
-	if !m.Cancel(id) {
+	// Cancel first item (dl-1)
+	if !m.Cancel("dl-1") {
 		t.Error("Cancel returned false")
 	}
 
@@ -155,10 +156,8 @@ func TestCancel(t *testing.T) {
 	// Check status
 	queue := m.Queue()
 	for _, item := range queue {
-		if item.ID == id {
-			if item.Status != StatusCancelled {
-				t.Errorf("expected status Cancelled, got %s", item.Status.String())
-			}
+		if item.Status != StatusCancelled {
+			t.Errorf("expected status Cancelled, got %s", item.Status.String())
 		}
 	}
 }
@@ -166,17 +165,19 @@ func TestCancel(t *testing.T) {
 func TestRemove(t *testing.T) {
 	m := NewManager("/tmp/test-downloads")
 
-	id := m.Add("file.mp4", "http://example.com/file")
+	if err := m.Add("file.mp4", "http://example.com/file"); err != nil {
+		t.Fatalf("Add returned error: %v", err)
+	}
 
 	// Can't remove while downloading (give it time to start)
 	time.Sleep(50 * time.Millisecond)
 
 	// Cancel first
-	m.Cancel(id)
+	m.Cancel("dl-1")
 	time.Sleep(50 * time.Millisecond)
 
 	// Now remove
-	if !m.Remove(id) {
+	if !m.Remove("dl-1") {
 		t.Error("Remove returned false")
 	}
 

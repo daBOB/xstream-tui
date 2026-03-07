@@ -38,6 +38,10 @@ func (a *App) handleKeyMsg(msg tea.KeyMsg) (*App, tea.Cmd) {
 			a.errorMsg = ""
 			return a, nil
 		}
+		// Let GlobalSearchScreen handle Esc (clear query or navigate back)
+		if a.screen == GlobalSearchScreen {
+			return a.updateScreen(msg)
+		}
 		return a.navigateBack()
 	}
 
@@ -84,8 +88,11 @@ func (a *App) handleDownloadRequest(msg DownloadRequestMsg) (*App, tea.Cmd) {
 				subPath = subPath + "/" + msg.SeasonName
 			}
 		}
-		a.downloader.AddWithPath(msg.Name, msg.URL, subPath)
-		a.errorMsg = "Added to download queue - Press 'D' to view"
+		if err := a.downloader.AddWithPath(msg.Name, msg.URL, subPath); err != nil {
+			a.errorMsg = "Download failed: " + err.Error()
+		} else {
+			a.errorMsg = "Added to download queue - Press 'Q' to view"
+		}
 	}
 	return a, nil
 }
@@ -101,7 +108,7 @@ func (a *App) handleBatchDownload(msg BatchDownloadMsg) (*App, tea.Cmd) {
 					subPath = subPath + "/" + dl.SeasonName
 				}
 			}
-			a.downloader.AddWithPath(dl.Name, dl.URL, subPath)
+			_ = a.downloader.AddWithPath(dl.Name, dl.URL, subPath)
 		}
 		a.errorMsg = fmt.Sprintf("Added %d episodes to queue - Press 'Q' to view", len(msg.Downloads))
 	}
@@ -110,29 +117,29 @@ func (a *App) handleBatchDownload(msg BatchDownloadMsg) (*App, tea.Cmd) {
 
 // updateScreenSizes updates all screen dimensions.
 func (a *App) updateScreenSizes() {
-	if s, ok := a.login.(loginScreen); ok {
-		s.SetSize(a.width, a.height)
+	if a.login != nil {
+		a.login.SetSize(a.width, a.height)
 	}
-	if s, ok := a.contentType.(contentTypeScreen); ok {
-		s.SetSize(a.width, a.height)
+	if a.contentType != nil {
+		a.contentType.SetSize(a.width, a.height)
 	}
-	if s, ok := a.categories.(categoriesScreen); ok {
-		s.SetSize(a.width, a.height)
+	if a.categories != nil {
+		a.categories.SetSize(a.width, a.height)
 	}
-	if s, ok := a.streams.(streamsScreen); ok {
-		s.SetSize(a.width, a.height)
+	if a.streams != nil {
+		a.streams.SetSize(a.width, a.height)
 	}
-	if s, ok := a.seasons.(seasonsScreen); ok {
-		s.SetSize(a.width, a.height)
+	if a.seasons != nil {
+		a.seasons.SetSize(a.width, a.height)
 	}
-	if s, ok := a.episodes.(episodesScreen); ok {
-		s.SetSize(a.width, a.height)
+	if a.episodes != nil {
+		a.episodes.SetSize(a.width, a.height)
 	}
-	if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
-		s.SetSize(a.width, a.height)
+	if a.seriesBrowser != nil {
+		a.seriesBrowser.SetSize(a.width, a.height)
 	}
-	if s, ok := a.globalSearch.(globalSearchScreen); ok {
-		s.SetSize(a.width, a.height)
+	if a.globalSearch != nil {
+		a.globalSearch.SetSize(a.width, a.height)
 	}
 }
 
@@ -142,36 +149,36 @@ func (a *App) updateScreen(msg tea.Msg) (*App, tea.Cmd) {
 
 	switch a.screen {
 	case LoginScreen:
-		if s, ok := a.login.(loginScreen); ok {
-			cmd = s.Update(msg)
+		if a.login != nil {
+			cmd = a.login.Update(msg)
 		}
 	case ContentTypeScreen:
-		if s, ok := a.contentType.(contentTypeScreen); ok {
-			cmd = s.Update(msg)
+		if a.contentType != nil {
+			cmd = a.contentType.Update(msg)
 		}
 	case CategoriesScreen:
-		if s, ok := a.categories.(categoriesScreen); ok {
-			cmd = s.Update(msg)
+		if a.categories != nil {
+			cmd = a.categories.Update(msg)
 		}
 	case StreamsScreen:
-		if s, ok := a.streams.(streamsScreen); ok {
-			cmd = s.Update(msg)
+		if a.streams != nil {
+			cmd = a.streams.Update(msg)
 		}
 	case SeasonsScreen:
-		if s, ok := a.seasons.(seasonsScreen); ok {
-			cmd = s.Update(msg)
+		if a.seasons != nil {
+			cmd = a.seasons.Update(msg)
 		}
 	case EpisodesScreen:
-		if s, ok := a.episodes.(episodesScreen); ok {
-			cmd = s.Update(msg)
+		if a.episodes != nil {
+			cmd = a.episodes.Update(msg)
 		}
 	case SeriesBrowserScreen:
-		if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
-			cmd = s.Update(msg)
+		if a.seriesBrowser != nil {
+			cmd = a.seriesBrowser.Update(msg)
 		}
 	case GlobalSearchScreen:
-		if s, ok := a.globalSearch.(globalSearchScreen); ok {
-			cmd = s.Update(msg)
+		if a.globalSearch != nil {
+			cmd = a.globalSearch.Update(msg)
 		}
 	}
 

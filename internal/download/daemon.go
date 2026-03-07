@@ -110,8 +110,8 @@ func (d *Daemon) getStatus() DaemonStatusMsg {
 	return status
 }
 
-// Add adds a download and returns the ID.
-func (d *Daemon) Add(name, url string) string {
+// Add adds a download to the queue.
+func (d *Daemon) Add(name, url string) error {
 	return d.manager.Add(name, url)
 }
 

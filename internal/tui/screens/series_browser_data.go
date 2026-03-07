@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -16,15 +15,18 @@ import (
 
 // loadSeriesInfo fetches series info from the API.
 func (m *SeriesBrowserModel) loadSeriesInfo() tea.Cmd {
+	client := m.client
+	seriesID := m.series.ID.String()
+
 	return func() tea.Msg {
-		if m.client == nil {
+		if client == nil {
 			return tui.ErrorMsg{Err: xc.ErrInvalidConfig}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), tui.DefaultTimeout)
 		defer cancel()
 
-		info, err := m.client.GetSeriesInfo(ctx, m.series.ID.String())
+		info, err := client.GetSeriesInfo(ctx, seriesID)
 		if err != nil {
 			return tui.ErrorMsg{Err: err}
 		}

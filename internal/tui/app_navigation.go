@@ -16,41 +16,41 @@ func (a *App) navigateTo(screen Screen) (*App, tea.Cmd) {
 
 	switch screen {
 	case ContentTypeScreen:
-		if s, ok := a.contentType.(contentTypeScreen); ok {
-			s.SetUserInfo(a.userInfo.Username)
+		if a.contentType != nil {
+			a.contentType.SetUserInfo(a.userInfo.Username)
 		}
 	case CategoriesScreen:
-		if s, ok := a.categories.(categoriesScreen); ok {
-			s.SetClient(a.client)
-			cmd = s.SetContentType(a.currentType)
+		if a.categories != nil {
+			a.categories.SetClient(a.client)
+			cmd = a.categories.SetContentType(a.currentType)
 		}
 	case StreamsScreen:
-		if s, ok := a.streams.(streamsScreen); ok {
-			s.SetClient(a.client)
-			cmd = s.SetCategory(a.currentCat, a.currentType)
+		if a.streams != nil {
+			a.streams.SetClient(a.client)
+			cmd = a.streams.SetCategory(a.currentCat, a.currentType)
 		}
 	case SeasonsScreen:
-		if s, ok := a.seasons.(seasonsScreen); ok {
-			s.SetClient(a.client)
-			cmd = s.SetSeries(a.currentSeries)
+		if a.seasons != nil {
+			a.seasons.SetClient(a.client)
+			cmd = a.seasons.SetSeries(a.currentSeries)
 		}
 	case EpisodesScreen:
-		if s, ok := a.episodes.(episodesScreen); ok {
-			s.SetClient(a.client)
-			s.SetSeriesName(a.currentSeries.Name)
-			s.SetSeason(a.currentSeason, a.currentSeasonEpisodes)
+		if a.episodes != nil {
+			a.episodes.SetClient(a.client)
+			a.episodes.SetSeriesName(a.currentSeries.Name)
+			a.episodes.SetSeason(a.currentSeason, a.currentSeasonEpisodes)
 		}
 	case SeriesBrowserScreen:
-		if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
-			s.SetClient(a.client)
-			cmd = s.SetSeries(a.currentSeries)
+		if a.seriesBrowser != nil {
+			a.seriesBrowser.SetClient(a.client)
+			cmd = a.seriesBrowser.SetSeries(a.currentSeries)
 		}
 	case GlobalSearchScreen:
-		if s, ok := a.globalSearch.(globalSearchScreen); ok {
-			s.SetClient(a.client)
+		if a.globalSearch != nil {
+			a.globalSearch.SetClient(a.client)
 			a.loading = true
 			a.loadingMsg = "Loading all " + a.currentType.String() + "..."
-			cmd = s.SetContentType(a.currentType)
+			cmd = a.globalSearch.SetContentType(a.currentType)
 		}
 	}
 
@@ -81,19 +81,22 @@ func (a *App) spinnerTick() tea.Cmd {
 
 // startPlayback launches the media player.
 func (a *App) startPlayback(url, title string) tea.Cmd {
+	// Cancel previous playback and create new context in Update (single-threaded)
+	if a.playerStop != nil {
+		a.playerStop()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	a.playerStop = cancel
+
+	// Capture player reference locally to avoid accessing App fields from goroutine
+	p := a.player
+
 	return func() tea.Msg {
-		if a.playerStop != nil {
-			a.playerStop()
-		}
-
-		ctx, cancel := context.WithCancel(context.Background())
-		a.playerStop = cancel
-
-		if err := a.player.Play(ctx, url, title); err != nil {
+		if err := p.Play(ctx, url, title); err != nil {
 			return ErrorMsg{Err: err}
 		}
 
-		return PlayerStartedMsg{PlayerType: string(a.player.Type())}
+		return PlayerStartedMsg{PlayerType: string(p.Type())}
 	}
 }
 

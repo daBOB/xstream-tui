@@ -53,36 +53,36 @@ func (a *App) renderWithStatusBar(content string) string {
 func (a *App) renderScreen() string {
 	switch a.screen {
 	case LoginScreen:
-		if s, ok := a.login.(loginScreen); ok {
-			return s.View()
+		if a.login != nil {
+			return a.login.View()
 		}
 	case ContentTypeScreen:
-		if s, ok := a.contentType.(contentTypeScreen); ok {
-			return s.View()
+		if a.contentType != nil {
+			return a.contentType.View()
 		}
 	case CategoriesScreen:
-		if s, ok := a.categories.(categoriesScreen); ok {
-			return s.View()
+		if a.categories != nil {
+			return a.categories.View()
 		}
 	case StreamsScreen:
-		if s, ok := a.streams.(streamsScreen); ok {
-			return s.View()
+		if a.streams != nil {
+			return a.streams.View()
 		}
 	case SeasonsScreen:
-		if s, ok := a.seasons.(seasonsScreen); ok {
-			return s.View()
+		if a.seasons != nil {
+			return a.seasons.View()
 		}
 	case EpisodesScreen:
-		if s, ok := a.episodes.(episodesScreen); ok {
-			return s.View()
+		if a.episodes != nil {
+			return a.episodes.View()
 		}
 	case SeriesBrowserScreen:
-		if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
-			return s.View()
+		if a.seriesBrowser != nil {
+			return a.seriesBrowser.View()
 		}
 	case GlobalSearchScreen:
-		if s, ok := a.globalSearch.(globalSearchScreen); ok {
-			return s.View()
+		if a.globalSearch != nil {
+			return a.globalSearch.View()
 		}
 	}
 

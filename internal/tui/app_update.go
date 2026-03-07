@@ -51,8 +51,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AuthErrorMsg:
 		a.loading = false
-		if s, ok := a.login.(loginScreen); ok {
-			s.SetError(msg.Error())
+		if a.login != nil {
+			a.login.SetError(msg.Error())
 		}
 		return a, nil
 
@@ -64,8 +64,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case CategoriesLoadedMsg:
 		a.loading = false
-		if s, ok := a.categories.(categoriesScreen); ok {
-			return a, s.Update(msg)
+		if a.categories != nil {
+			return a, a.categories.Update(msg)
 		}
 		return a, nil
 
@@ -77,8 +77,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StreamsLoadedMsg:
 		a.loading = false
-		if s, ok := a.streams.(streamsScreen); ok {
-			return a, s.Update(msg)
+		if a.streams != nil {
+			return a, a.streams.Update(msg)
 		}
 		return a, nil
 
@@ -97,11 +97,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SeriesInfoLoadedMsg:
 		a.loading = false
 		if a.screen == SeriesBrowserScreen {
-			if s, ok := a.seriesBrowser.(seriesBrowserScreen); ok {
-				return a, s.Update(msg)
+			if a.seriesBrowser != nil {
+				return a, a.seriesBrowser.Update(msg)
 			}
-		} else if s, ok := a.seasons.(seasonsScreen); ok {
-			return a, s.Update(msg)
+		} else if a.seasons != nil {
+			return a, a.seasons.Update(msg)
 		}
 		return a, tea.Batch(cmds...)
 
@@ -131,9 +131,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return a, nil
 
+	case NavigateBackMsg:
+		return a.navigateBack()
+
 	case ErrorMsg:
 		a.loading = false
-		a.errorMsg = msg.Error()
+		a.errorMsg = FriendlyError(msg.Err)
 		return a, nil
 
 	case ClearErrorMsg:
@@ -170,8 +173,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case GlobalSearchResultsMsg:
 		a.loading = false
-		if s, ok := a.globalSearch.(globalSearchScreen); ok {
-			return a, s.Update(msg)
+		if a.globalSearch != nil {
+			return a, a.globalSearch.Update(msg)
 		}
 		return a, nil
 	}

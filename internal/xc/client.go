@@ -153,7 +153,7 @@ func (c *Client) buildURL(action string, params map[string]string) (string, erro
 }
 
 // get performs a GET request with retry logic and decodes JSON response.
-func (c *Client) get(ctx context.Context, action string, params map[string]string, result interface{}) error {
+func (c *Client) get(ctx context.Context, action string, params map[string]string, result any) error {
 	reqURL, err := c.buildURL(action, params)
 	if err != nil {
 		return fmt.Errorf("xc %s: %w", actionName(action), err)
@@ -193,7 +193,7 @@ func (c *Client) get(ctx context.Context, action string, params map[string]strin
 }
 
 // doRequest performs a single HTTP request attempt.
-func (c *Client) doRequest(ctx context.Context, reqURL, action string, result interface{}) error {
+func (c *Client) doRequest(ctx context.Context, reqURL, action string, result any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return fmt.Errorf("xc %s: create request: %w", actionName(action), err)
@@ -289,7 +289,7 @@ func (c *Client) BaseURL() string {
 	return c.baseURL
 }
 
-// logDebug writes raw response to the debug writer.
+// logDebug writes raw response to the debug writer with credentials redacted.
 func (c *Client) logDebug(action string, body []byte) {
 	w := c.debugWriter
 	if w == nil {
@@ -301,7 +301,13 @@ func (c *Client) logDebug(action string, body []byte) {
 		action = "auth"
 	}
 
+	// Redact password from debug output to prevent credential leakage
+	output := string(body)
+	if c.password != "" {
+		output = strings.ReplaceAll(output, c.password, "***REDACTED***")
+	}
+
 	fmt.Fprintf(w, "\n=== DEBUG: XC API Response [%s] ===\n", action)
-	fmt.Fprintf(w, "%s\n", string(body))
+	fmt.Fprintf(w, "%s\n", output)
 	fmt.Fprintf(w, "=== END DEBUG ===\n\n")
 }

@@ -2,8 +2,8 @@ package screens
 
 import (
 	"context"
+	"errors"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -83,45 +83,46 @@ func (m *GlobalSearchModel) SetSize(width, height int) {
 }
 
 func (m *GlobalSearchModel) loadAllContent() tea.Cmd {
+	// Capture fields locally to avoid accessing model from goroutine
+	client := m.client
+	contentType := m.contentType
+
 	return func() tea.Msg {
-		if m.client == nil {
+		if client == nil {
 			return tui.ErrorMsg{Err: xc.ErrInvalidConfig}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), tui.GlobalSearchTimeout)
 		defer cancel()
 
 		var msg tui.GlobalSearchResultsMsg
 
-		switch m.contentType {
+		switch contentType {
 		case tui.LiveContent:
-			streams, err := m.client.GetAllLiveStreams(ctx)
+			streams, err := client.GetAllLiveStreams(ctx)
 			if err != nil {
 				return tui.ErrorMsg{Err: err}
 			}
 			msg.LiveStreams = streams
-			// Fetch categories for lookup
-			cats, _ := m.client.GetLiveCategories(ctx)
+			cats, _ := client.GetLiveCategories(ctx)
 			msg.Categories = cats
 
 		case tui.VODContent:
-			streams, err := m.client.GetAllVODStreams(ctx)
+			streams, err := client.GetAllVODStreams(ctx)
 			if err != nil {
 				return tui.ErrorMsg{Err: err}
 			}
 			msg.VODStreams = streams
-			// Fetch categories for lookup
-			cats, _ := m.client.GetVODCategories(ctx)
+			cats, _ := client.GetVODCategories(ctx)
 			msg.Categories = cats
 
 		case tui.SeriesContent:
-			series, err := m.client.GetAllSeries(ctx)
+			series, err := client.GetAllSeries(ctx)
 			if err != nil {
 				return tui.ErrorMsg{Err: err}
 			}
 			msg.Series = series
-			// Fetch categories for lookup
-			cats, _ := m.client.GetSeriesCategories(ctx)
+			cats, _ := client.GetSeriesCategories(ctx)
 			msg.Categories = cats
 		}
 
@@ -211,8 +212,10 @@ func (m *GlobalSearchModel) Update(msg tea.Msg) tea.Cmd {
 				m.filterItems()
 				return nil
 			}
-			// Otherwise, signal to close search (handled by app.go)
-			return nil
+			// Empty search — signal navigation back to parent screen
+			return func() tea.Msg {
+				return tui.NavigateBackMsg{}
+			}
 		case "enter":
 			return m.selectItem()
 		case "down":
@@ -227,7 +230,7 @@ func (m *GlobalSearchModel) Update(msg tea.Msg) tea.Cmd {
 		case "pgup", "ctrl+u":
 			m.list.Update(msg)
 			return nil
-		case "d":
+		case "ctrl+x":
 			return m.downloadItem()
 		default:
 			// Update search input (all other keys go to text input)
@@ -306,7 +309,9 @@ func (m *GlobalSearchModel) downloadItem() tea.Cmd {
 		}
 	}
 
-	return nil
+	return func() tea.Msg {
+		return tui.ErrorMsg{Err: errors.New("only VOD content can be downloaded")}
+	}
 }
 
 // View renders the global search screen.
@@ -314,16 +319,7 @@ func (m *GlobalSearchModel) View() string {
 	var b strings.Builder
 
 	// Header
-	icon := ">"
-	switch m.contentType {
-	case tui.LiveContent:
-		icon = ">"
-	case tui.VODContent:
-		icon = ">"
-	case tui.SeriesContent:
-		icon = ">"
-	}
-	title := style.TitleStyle.Render(icon + " Global Search: " + m.contentType.String())
+	title := style.TitleStyle.Render("> Global Search: " + m.contentType.String())
 	b.WriteString(title)
 	b.WriteString("\n")
 
@@ -348,7 +344,7 @@ func (m *GlobalSearchModel) View() string {
 	}
 
 	// Help text
-	helpText := "[Enter] Play/Select  [d] Download  [Esc] Close/Clear"
+	helpText := "[Enter] Play/Select  [Ctrl+x] Download  [Esc] Close/Clear"
 	help := style.HelpStyle.Render("\n" + helpText)
 	b.WriteString(help)
 

@@ -3,7 +3,6 @@ package screens
 import (
 	"context"
 	"strings"
-	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -95,33 +94,36 @@ func (m *StreamsModel) SetSize(width, height int) {
 }
 
 func (m *StreamsModel) loadStreams() tea.Cmd {
+	// Capture fields locally to avoid accessing model from goroutine
+	client := m.client
+	contentType := m.contentType
+	catID := m.category.ID.String()
+
 	return func() tea.Msg {
-		if m.client == nil {
+		if client == nil {
 			return tui.ErrorMsg{Err: xc.ErrInvalidConfig}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), tui.DefaultTimeout)
 		defer cancel()
 
-		catID := m.category.ID.String()
-
-		switch m.contentType {
+		switch contentType {
 		case tui.LiveContent:
-			streams, err := m.client.GetLiveStreams(ctx, catID)
+			streams, err := client.GetLiveStreams(ctx, catID)
 			if err != nil {
 				return tui.ErrorMsg{Err: err}
 			}
 			return tui.StreamsLoadedMsg{LiveStreams: streams}
 
 		case tui.VODContent:
-			streams, err := m.client.GetVODStreams(ctx, catID)
+			streams, err := client.GetVODStreams(ctx, catID)
 			if err != nil {
 				return tui.ErrorMsg{Err: err}
 			}
 			return tui.StreamsLoadedMsg{VODStreams: streams}
 
 		case tui.SeriesContent:
-			series, err := m.client.GetSeries(ctx, catID)
+			series, err := client.GetSeries(ctx, catID)
 			if err != nil {
 				return tui.ErrorMsg{Err: err}
 			}
