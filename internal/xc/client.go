@@ -43,51 +43,6 @@ type Client struct {
 	debugWriter io.Writer // Writer for debug output (defaults to os.Stderr)
 }
 
-// ClientOption configures a Client.
-type ClientOption func(*Client)
-
-// WithTimeout sets the HTTP client timeout.
-func WithTimeout(d time.Duration) ClientOption {
-	return func(c *Client) {
-		c.httpClient.Timeout = d
-	}
-}
-
-// WithHTTPClient sets a custom HTTP client.
-func WithHTTPClient(hc *http.Client) ClientOption {
-	return func(c *Client) {
-		c.httpClient = hc
-	}
-}
-
-// WithDebug enables raw response logging.
-func WithDebug(enabled bool) ClientOption {
-	return func(c *Client) {
-		c.debug = enabled
-	}
-}
-
-// WithDebugWriter sets a custom writer for debug output.
-func WithDebugWriter(w io.Writer) ClientOption {
-	return func(c *Client) {
-		c.debugWriter = w
-	}
-}
-
-// WithRetry configures retry behavior for transient failures.
-func WithRetry(config RetryConfig) ClientOption {
-	return func(c *Client) {
-		c.retryConfig = config
-	}
-}
-
-// WithNoRetry disables retry logic.
-func WithNoRetry() ClientOption {
-	return func(c *Client) {
-		c.retryConfig.MaxRetries = 0
-	}
-}
-
 // NewClient creates a new XC API client.
 // Host should include protocol (http:// or https://).
 // Returns error if host, username, or password are empty.
@@ -248,45 +203,6 @@ func actionName(action string) string {
 		return "auth"
 	}
 	return action
-}
-
-// LiveStreamURL returns the playback URL for a live stream.
-func (c *Client) LiveStreamURL(streamID string) string {
-	return fmt.Sprintf("%s/live/%s/%s/%s.ts", c.baseURL, c.username, c.password, streamID)
-}
-
-// LiveStreamURLWithFormat returns the playback URL with custom extension.
-func (c *Client) LiveStreamURLWithFormat(streamID, ext string) string {
-	return fmt.Sprintf("%s/live/%s/%s/%s.%s", c.baseURL, c.username, c.password, streamID, ext)
-}
-
-// VODStreamURL returns the playback URL for a VOD item.
-func (c *Client) VODStreamURL(streamID, container string) string {
-	return fmt.Sprintf("%s/movie/%s/%s/%s.%s", c.baseURL, c.username, c.password, streamID, container)
-}
-
-// SeriesEpisodeURL returns the playback URL for a series episode.
-func (c *Client) SeriesEpisodeURL(episodeID, container string) string {
-	return fmt.Sprintf("%s/series/%s/%s/%s.%s", c.baseURL, c.username, c.password, episodeID, container)
-}
-
-// TimeShiftURL returns the playback URL for time-shifted content.
-func (c *Client) TimeShiftURL(streamID string, start time.Time, duration time.Duration) string {
-	return fmt.Sprintf("%s/timeshift/%s/%s/%d/%d/%s.ts",
-		c.baseURL, c.username, c.password,
-		int(duration.Minutes()), start.Unix(), streamID)
-}
-
-// CatchUpURL returns the playback URL for catch-up content.
-func (c *Client) CatchUpURL(streamID string, start, end time.Time) string {
-	return fmt.Sprintf("%s/streaming/timeshift.php?username=%s&password=%s&stream=%s&start=%s&end=%s",
-		c.baseURL, c.username, c.password, streamID,
-		start.Format("2006-01-02:15-04"), end.Format("2006-01-02:15-04"))
-}
-
-// BaseURL returns the configured base URL.
-func (c *Client) BaseURL() string {
-	return c.baseURL
 }
 
 // logDebug writes raw response to the debug writer with credentials redacted.
