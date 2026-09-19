@@ -49,7 +49,7 @@ func (d *DownloadQueue) View() string {
 	}
 
 	b.WriteString("\n")
-	helpKeys := "[↑↓/jk] Navigate  [PgUp/PgDn] Scroll  [g/G] Top/Bottom  [d] Cancel  [x] Remove  [Esc] Close"
+	helpKeys := "[↑↓/jk] Navigate  [PgUp/PgDn] Scroll  [g/G] Top/Bottom  [d] Cancel  [x] Remove  [r] Retry  [c] Clean  [Esc] Close"
 	b.WriteString(styles.dim.Render(helpKeys))
 
 	containerStyle := lipgloss.NewStyle().

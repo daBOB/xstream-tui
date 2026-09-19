@@ -187,6 +187,43 @@ func (m *Manager) Remove(id string) bool {
 	return false
 }
 
+// Retry re-queues a failed or cancelled download.
+func (m *Manager) Retry(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, item := range m.queue {
+		if item.ID == id && (item.Status == StatusFailed || item.Status == StatusCancelled) {
+			item.Status = StatusQueued
+			item.Progress = 0
+			item.Downloaded = 0
+			item.Size = 0
+			item.Error = nil
+			go m.processQueue()
+			return true
+		}
+	}
+	return false
+}
+
+// ClearFinished removes all completed, failed, and cancelled items from queue.
+func (m *Manager) ClearFinished() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	kept := make([]*Item, 0, len(m.queue))
+	removed := 0
+	for _, item := range m.queue {
+		if item.Status == StatusQueued || item.Status == StatusDownloading {
+			kept = append(kept, item)
+		} else {
+			removed++
+		}
+	}
+	m.queue = kept
+	return removed
+}
+
 // Queue returns a copy of the current queue.
 func (m *Manager) Queue() []Item {
 	m.mu.RLock()

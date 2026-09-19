@@ -125,6 +125,16 @@ func (d *Daemon) Remove(id string) bool {
 	return d.manager.Remove(id)
 }
 
+// Retry re-queues a failed or cancelled download.
+func (d *Daemon) Retry(id string) bool {
+	return d.manager.Retry(id)
+}
+
+// ClearFinished removes all completed, failed, and cancelled items.
+func (d *Daemon) ClearFinished() int {
+	return d.manager.ClearFinished()
+}
+
 // DownloadCompleteMsg is sent when a download finishes (success or failure).
 type DownloadCompleteMsg struct {
 	ID        string

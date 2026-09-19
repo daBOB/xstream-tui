@@ -72,6 +72,18 @@ func (a *App) handleDownloadQueueKey(msg tea.KeyMsg) (*App, tea.Cmd) {
 			a.downloadQueue.SetItems(a.downloader.Queue())
 		}
 		return a, nil
+	case "r":
+		if id := a.downloadQueue.SelectedID(); id != "" && a.downloader != nil {
+			a.downloader.Retry(id)
+			a.downloadQueue.SetItems(a.downloader.Queue())
+		}
+		return a, nil
+	case "c":
+		if a.downloader != nil {
+			a.downloader.ClearFinished()
+			a.downloadQueue.SetItems(a.downloader.Queue())
+		}
+		return a, nil
 	default:
 		a.downloadQueue.Update(msg)
 		return a, nil
