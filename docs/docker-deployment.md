@@ -84,6 +84,16 @@ Three independent failure modes all fail closed:
    `docker compose run` is required rather than `up`, because a TUI needs an
    attached TTY.
 
+   The same stack is also available without compose, as plain `docker run`:
+
+   ```bash
+   make vpn-up      # start the Mullvad tunnel container, wait for healthy
+   make tui         # run the TUI in that container's network namespace
+   make vpn-down    # stop the tunnel
+   ```
+
+   Override the mounts with `make tui DOWNLOAD_DIR=/elsewhere`.
+
 ## Verifying the tunnel
 
 ```bash
