@@ -22,7 +22,7 @@ Quick validation before packaging. Run `scripts/package_skill.py` for automated 
 
 - [ ] Tests exist and pass
 - [ ] Cross-platform (Node.js/Python preferred)
-- [ ] Env vars: respects hierarchy `process.env` > `skill/.env` > `.opencode/skills/.env` > `.opencode/.env`
+- [ ] Env vars: respects hierarchy `process.env` > `$HOME/.opencode/skills/${SKILL}/.env` (global) > `$HOME/.opencode/skills/.env` (global) > `$HOME/.opencode/.env` (global) > `./.opencode/skills/${SKILL}/.env` (cwd) > `./.opencode/skills/.env` (cwd) > `./.opencode/.env` (cwd)
 - [ ] Dependencies documented (requirements.txt, .env.example)
 - [ ] Manually tested with real use cases
 
@@ -60,3 +60,24 @@ Checks performed:
 - File organization
 
 Fix all errors before distributing.
+
+## Subagent Delegation Enforcement
+
+When a skill requires subagent delegation (via Task tool):
+
+1. **Use MUST language** - "Use subagent" is weak; "MUST spawn subagent" is enforceable
+2. **Include Task pattern** - Show exact syntax: `Task(subagent_type="X", prompt="Y", description="Z")`
+3. **Add validation rule** - "If Task tool calls = 0 at end, workflow is INCOMPLETE"
+4. **Mark requirements clearly** - Use table with "MUST spawn" column
+5. **Forbid direct implementation** - "DO NOT implement X yourself - DELEGATE to subagent"
+
+**Anti-pattern (weak):**
+```
+- Use `tester` agent for testing
+```
+
+**Correct pattern (enforceable):**
+```
+- **MUST** spawn `tester` subagent: `Task(subagent_type="tester", prompt="Run tests", description="Test")`
+- DO NOT run tests yourself - DELEGATE
+```

@@ -1,7 +1,8 @@
 ---
-name: fix
-description: ALWAYS activate this skill before fixing ANY bug, error, test failure, CI/CD issue, type error, lint, log error, UI issue, code problem.
-version: 1.1.0
+name: ck:fix
+description: "ALWAYS activate this skill before fixing ANY bug, error, test failure, CI/CD issue, type error, lint, log error, UI issue, code problem."
+version: 1.2.0
+argument-hint: "[issue] --auto|--review|--quick|--parallel"
 ---
 
 # Fixing
@@ -13,6 +14,7 @@ Unified skill for fixing issues of any complexity with intelligent routing.
 - `--auto` - Activate autonomous mode (**default**)
 - `--review` - Activate human-in-the-loop review mode
 - `--quick` - Activate quick mode
+- `--parallel` - Activate parallel mode: route to parallel `fullstack-developer` agents per issue
 
 ## Workflow
 
@@ -30,12 +32,12 @@ See `references/mode-selection.md` for AskUserQuestion format.
 
 ### Step 2: Debug
 
-- Activate `debug` skill.
+- Activate `ck:debug` skill.
 - Guess all possible root causes.
 - Spawn multiple `Explore` subagents in parallel to verify each hypothesis.
 - Create report with all findings for the next step.
 
-### Step 3: Complexity Assessment & Fix Implementation
+### Step 3: Complexity Assessment & Task Orchestration
 
 Classify before routing. See `references/complexity-assessment.md`.
 
@@ -44,19 +46,26 @@ Classify before routing. See `references/complexity-assessment.md`.
 | **Simple** | Single file, clear error, type/lint | `references/workflow-quick.md` |
 | **Moderate** | Multi-file, root cause unclear | `references/workflow-standard.md` |
 | **Complex** | System-wide, architecture impact | `references/workflow-deep.md` |
-| **Parallel** | 2+ independent issues | Parallel `fullstack-developer` agents |
+| **Parallel** | 2+ independent issues OR `--parallel` flag | Parallel `fullstack-developer` agents |
 
-### Step 4: Fix Verification & Prevent Future Issues
+**Task Orchestration (Moderate+ only):** After classifying, create native Claude Tasks for all phases upfront with dependencies. See `references/task-orchestration.md`.
+- Skip for Quick workflow (< 3 steps, overhead exceeds benefit)
+- Use `TaskCreate` with `addBlockedBy` for dependency chains
+- Update via `TaskUpdate` as each phase completes
+- For Parallel: create separate task trees per independent issue
 
-- Read and analyze all the implemented changes.
-- Spawn multiple `Explore` subagents to find possible related code for verification.
-- Make sure these fixes don't break other parts of the codebase.
+### Step 4: Fix Implementation & Verification
+
+- Implement fix per selected workflow, updating Tasks as phases complete.
+- Spawn multiple `Explore` subagents to verify no regressions.
 - Prevent future issues by adding comprehensive validation.
 
-### Step 5: Finalize
+### Step 5: Finalize (MANDATORY - never skip)
 
-- Report summary to user with confidence level/score, all the changes and related files.
-- Ask to commit via `git-manager` subagent and update docs if needed via `docs-manager` subagent (in parallel).
+1. Report summary: confidence score, changes, files
+2. `docs-manager` subagent → update `./docs` if changes warrant (NON-OPTIONAL)
+3. `TaskUpdate` → mark ALL Claude Tasks `completed`
+4. Ask user if they want to commit via `git-manager` subagent
 
 ---
 
@@ -64,8 +73,8 @@ Classify before routing. See `references/complexity-assessment.md`.
 
 See `references/skill-activation-matrix.md` for complete matrix.
 
-**Always activate:** `debug` (all workflows)
-**Conditional:** `problem-solving`, `sequential-thinking`, `brainstorming`, `context-engineering`
+**Always activate:** `ck:debug` (all workflows)
+**Conditional:** `ck:problem-solving`, `ck:sequential-thinking`, `ck:brainstorm`, `ck:context-engineering`
 **Subagents:** `debugger`, `researcher`, `planner`, `code-reviewer`, `tester`, `Bash`
 **Parallel:** Multiple `Explore` agents for scouting, `Bash` agents for verification
 
@@ -86,12 +95,13 @@ Unified step markers:
 Load as needed:
 - `references/mode-selection.md` - AskUserQuestion format for mode
 - `references/complexity-assessment.md` - Classification criteria
+- `references/task-orchestration.md` - Native Claude Task patterns for moderate+ workflows
 - `references/workflow-quick.md` - Quick: debug → fix → review
-- `references/workflow-standard.md` - Standard: full pipeline
-- `references/workflow-deep.md` - Deep: research + brainstorm + plan
+- `references/workflow-standard.md` - Standard: full pipeline with Tasks
+- `references/workflow-deep.md` - Deep: research + brainstorm + plan with Tasks
 - `references/review-cycle.md` - Review logic (autonomous vs HITL)
 - `references/skill-activation-matrix.md` - When to activate each skill
-- `references/parallel-exploration.md` - Parallel Explore/Bash subagents patterns
+- `references/parallel-exploration.md` - Parallel Explore/Bash/Task coordination patterns
 
 **Specialized Workflows:**
 - `references/workflow-ci.md` - GitHub Actions/CI failures

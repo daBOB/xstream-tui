@@ -90,3 +90,6 @@ prompt.md
 .claude/settings.bak.json
 # Generated analysis output
 /graphify-out/
+
+# Hook runtime logs
+.claude/hooks/.logs/

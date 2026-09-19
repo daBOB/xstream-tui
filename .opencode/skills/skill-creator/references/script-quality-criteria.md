@@ -34,9 +34,12 @@ Tests must pass. No skipping failed tests.
 Respect hierarchy (first found wins):
 
 1. `process.env` (runtime)
-2. `.opencode/skills/<skill-name>/.env` (skill-specific)
-3. `.opencode/skills/.env` (shared skills)
-4. `.opencode/.env` (global)
+2. `$HOME/.opencode/skills/<skill-name>/.env` (skill-specific)
+3. `$HOME/.opencode/skills/.env` (shared skills)
+4. `$HOME/.opencode/.env` (global)
+5. `./.opencode/skills/${SKILL}/.env` (cwd)
+6. `./.opencode/skills/.env` (cwd)
+7. `./.opencode/.env` (cwd)
 
 **Implementation pattern (Python):**
 
@@ -45,9 +48,12 @@ from dotenv import load_dotenv
 import os
 
 # Load in reverse order (last loaded wins if not set)
-load_dotenv('.opencode/.env')
-load_dotenv('.opencode/skills/.env')
-load_dotenv('.opencode/skills/my-skill/.env')
+load_dotenv('$HOME/.opencode/.env')
+load_dotenv('$HOME/.opencode/skills/.env')
+load_dotenv('$HOME/.opencode/skills/my-skill/.env')
+load_dotenv('./.opencode/skills/my-skill/.env')
+load_dotenv('./.opencode/skills/.env')
+load_dotenv('./.opencode/.env')
 # process.env already takes precedence
 ```
 
