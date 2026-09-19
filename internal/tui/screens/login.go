@@ -73,9 +73,8 @@ func NewLoginModel() *LoginModel {
 // loadFromEnv pre-populates fields from environment variables.
 func (m *LoginModel) loadFromEnv() {
 	if host := os.Getenv("XSTREAM_HOST"); host != "" {
-		// Strip protocol prefix if present
+		// Strip http:// (default protocol), preserve https:// so user sees it
 		host = strings.TrimPrefix(host, "http://")
-		host = strings.TrimPrefix(host, "https://")
 		m.inputs[inputHost].SetValue(host)
 	}
 	if port := os.Getenv("XSTREAM_PORT"); port != "" {
@@ -197,8 +196,17 @@ func (m *LoginModel) submit() tea.Cmd {
 		port = "8080"
 	}
 
+	// Determine protocol — preserve https:// if specified, default to http
+	scheme := "http"
+	if strings.HasPrefix(host, "https://") {
+		scheme = "https"
+		host = strings.TrimPrefix(host, "https://")
+	} else {
+		host = strings.TrimPrefix(host, "http://")
+	}
+
 	// Build URL
-	url := "http://" + host + ":" + port
+	url := scheme + "://" + host + ":" + port
 
 	return func() tea.Msg {
 		// Check for debug mode via environment variable
