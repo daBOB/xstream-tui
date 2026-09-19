@@ -41,6 +41,12 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+debug.log
+*.log
+
+# Built binaries (project-specific)
+/xstream-tui
+/opencodetmp/
 
 # package manager
 package-lock.json
@@ -82,3 +88,5 @@ prompt.md
 # Gemini CLI settings (symlink to .claude/.mcp.json)
 .gemini/settings.json
 .claude/settings.bak.json
+# Generated analysis output
+/graphify-out/
