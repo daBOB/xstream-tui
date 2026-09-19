@@ -93,3 +93,7 @@ prompt.md
 
 # Hook runtime logs
 .claude/hooks/.logs/
+
+# Docker / Mullvad VPN
+docker/mullvad.env
+/data/

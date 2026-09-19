@@ -125,6 +125,19 @@ Detailed description of how the system works:
 
 ---
 
+### [docker-deployment.md](./docker-deployment.md)
+**Containerized Run with Mullvad Kill Switch**
+
+How to run the app in Docker behind a Mullvad WireGuard tunnel:
+- What runs in the container (API + downloads) and what stays on the host (playback)
+- Kill-switch design: gluetun sidecar, shared network namespace, fail-closed modes
+- Setup from a Mullvad `.conf` file, volumes, LAN exceptions
+- Tunnel verification and troubleshooting
+
+**Best for:** Running the client without exposing your real IP to the portal
+
+---
+
 ## Quick Reference
 
 ### Development Workflow

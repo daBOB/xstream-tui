@@ -1,4 +1,4 @@
-.PHONY: build run test clean lint
+.PHONY: build run test clean lint docker-image docker-run docker-down docker-logs vpn-check
 
 # Build the application binary
 build:
@@ -29,3 +29,26 @@ lint:
 # Tidy dependencies
 tidy:
 	go mod tidy
+
+# --- Docker + Mullvad kill switch ---
+
+# Build the container image
+docker-image:
+	docker compose build
+
+# Start the VPN and attach the TUI to it (interactive)
+docker-run:
+	docker compose run --rm xstream-tui
+
+# Stop the VPN container
+docker-down:
+	docker compose down
+
+# Follow gluetun tunnel logs
+docker-logs:
+	docker compose logs -f gluetun
+
+# Verify the app container really exits through Mullvad
+vpn-check:
+	docker compose run --rm --entrypoint sh xstream-tui -c \
+		'wget -qO- https://am.i.mullvad.net/json'

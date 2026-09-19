@@ -1,0 +1,31 @@
+# Secrets - must never reach the image or the build context
+.env
+.env.*
+docker/mullvad.env
+*.pem
+
+# Build artifacts and local binaries
+bin/
+xstream-tui
+coverage.out
+coverage.html
+data/
+
+# VCS and tooling
+.git
+.gitignore
+.claude
+.agent
+.agents
+.opencode
+.remember
+.serena
+
+# Docs, plans and generated analysis - not needed to compile
+docs/
+plans/
+graphify-out/
+repomix-output.xml
+release-manifest.json
+skills-lock.json
+*.md

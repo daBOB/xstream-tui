@@ -1,0 +1,58 @@
+services:
+  # Mullvad WireGuard tunnel + kill switch.
+  # Every container that joins this network namespace can only reach the
+  # internet through the tunnel; if the tunnel drops, gluetun's firewall
+  # drops the traffic instead of leaking it to the default route.
+  gluetun:
+    image: qmcgaw/gluetun:v3
+    container_name: xstream-gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: mullvad
+      VPN_TYPE: wireguard
+      # Kill switch: default-drop firewall, only the tunnel and the WireGuard
+      # endpoint are allowed out. On by default in gluetun, pinned here so the
+      # guarantee is visible and cannot be lost to an upstream default change.
+      FIREWALL: "on"
+      # DNS-over-TLS through the tunnel, so name lookups cannot leak to the LAN resolver
+      DOT: "on"
+      # Fail fast on a tunnel that never comes up instead of hanging the app start
+      HEALTH_VPN_DURATION_INITIAL: 20s
+      TZ: ${TZ:-Europe/Berlin}
+    # Secrets and server selection live here (generated from your Mullvad .conf)
+    env_file:
+      - docker/mullvad.env
+    volumes:
+      - gluetun-data:/gluetun
+    restart: unless-stopped
+
+  # The TUI itself. It has no network stack of its own: it shares gluetun's
+  # namespace, so it is network-dead whenever gluetun is down or unhealthy.
+  xstream-tui:
+    build:
+      context: .
+    image: xstream-tui:local
+    container_name: xstream-tui
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    network_mode: "service:gluetun"
+    stdin_open: true
+    tty: true
+    env_file:
+      # Portal credentials (XSTREAM_HOST/PORT/USERNAME/PASSWORD) - optional
+      - path: .env
+        required: false
+    volumes:
+      - ./data/config:/config
+      # Downloads land on the TK08 network share (SSHFS mount on the host).
+      # The FUSE client runs on the host, so the container needs no LAN access
+      # and the kill switch stays absolute.
+      - ${HOME}/TK08/xstream:/downloads
+    restart: "no"
+
+volumes:
+  gluetun-data:
