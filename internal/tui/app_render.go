@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/altmueller/xstream-tui/internal/tui/style"
 	"github.com/charmbracelet/lipgloss"
@@ -156,6 +158,9 @@ func (a *App) renderStatusBar() string {
 	var right string
 	expDate := a.userInfo.ExpDate.String()
 	if expDate != "" && expDate != "0" {
+		if ts, err := strconv.ParseInt(expDate, 10, 64); err == nil {
+			expDate = time.Unix(ts, 0).Format("02 Jan 2006")
+		}
 		right = style.StatusBarLabelStyle.Render("Expires: ") + expDate
 	}
 
