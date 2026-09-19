@@ -56,16 +56,18 @@ func (m *Manager) processQueue() {
 			next.Status = StatusCompleted
 			next.Progress = 1.0
 		}
-		m.mu.Unlock()
-
-		m.notifyProgress(ProgressUpdate{
+		// Snapshot fields before unlocking to avoid data race
+		update := ProgressUpdate{
 			ID:         next.ID,
 			Progress:   next.Progress,
 			Downloaded: next.Downloaded,
 			Size:       next.Size,
 			Status:     next.Status,
 			Error:      next.Error,
-		})
+		}
+		m.mu.Unlock()
+
+		m.notifyProgress(update)
 
 		m.processQueue()
 	}()
